@@ -1,0 +1,4 @@
+CREATE DATABASE feedme_test;
+CREATE USER feedme WITH ENCRYPTED PASSWORD 'feedme@test';
+ALTER DATABASE feedme_test OWNER TO feedme;
+GRANT ALL PRIVILEGES ON DATABASE feedme_test TO feedme;
