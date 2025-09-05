@@ -9,7 +9,8 @@ pub struct Feed {
     pub description: Option<String>,
     pub is_public: bool,
     #[sqlx(rename = "type")]
-    pub feed_type: FeedType
+    pub feed_type: FeedType,
+    pub digest: Box<[u8]>
 }
 
 #[derive(Serialize, Deserialize, Debug, Type)]
@@ -44,8 +45,7 @@ impl Feed {
     }
 
     pub async fn fetch(conn: &PgPool) -> Result<(), Error> {
-        let x = sqlx::query_as!(Feed, r#"SELECT id, name, description, is_public, type as "feed_type: FeedType" FROM feeds"#).fetch_one(conn).await?;
-        x
+        let x = sqlx::query_as!(Feed, r#"SELECT id, name, description, is_public, digest, type as "feed_type: FeedType" FROM feeds"#).fetch_one(conn).await?;
         Ok(())
     }
 }

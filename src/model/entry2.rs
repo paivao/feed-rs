@@ -28,22 +28,70 @@ macro_rules! make_entry_type {
         }
 
         impl $name {
+            const INSERT_QUERY: &'static str = concat!("INSERT INTO ", $table_name, " (value, enabled, feed_id, description, valid_until) VALUES $1, $2, $3, $4, $5 RETURNING id;");
+            const FETCH_QUERY: &'static str = concat!("SELECT value from ", $table_name, " WHERE feed_id = $1 AND enabled = TRUE AND (valid_until IS NULL OR valid_until >= NOW())");
+            const GET_SOME_QUERY: &'static str = concat!("SELECT (id, value, enabled, description, valid_until) from ", $table_name, " WHERE feed_id = ");
+            const UPDATE_QUERY: &'static str = concat!("UPDATE ", $table_name, " SET enabled = $1, description = $2, valid_until = $3 WHERE id = $4;");
+            const DELETE_QUERY: &'static str = concat!("DELETE FROM ", $table_name, " WHERE id = $1;");
+            
             pub async fn insert(conn: &PgPool, feed: &Feed, value: $field_type, description: Option<String>, valid_until: Option<DateTime<Utc>>) -> Result<Self, Error> {
                 let descr = description.unwrap_or(String::new());
-                let id:i64 = sqlx::query_scalar(concat!("INSERT INTO ", $table_name, " (value, enabled, feed_id, description, valid_until) VALUES $1, $2, $3, $4, $5 RETURNING id;"))
-                .bind(&value)
-                .bind(true)
-                .bind(feed.id)
-                .bind(&descr)
-                .bind(&valid_until)
-                .fetch_one(conn).await?;
+                let id:i64 = sqlx::query_scalar(Self::INSERT_QUERY)
+                    .bind(&value)
+                    .bind(true)
+                    .bind(feed.id)
+                    .bind(&descr)
+                    .bind(&valid_until)
+                    .fetch_one(conn).await?;
                 Ok(Self{id: id, value: value, enabled: true, description: descr, valid_until: valid_until/*, feed_id: feed.id*/})
+            }
+
+            fn fetch_values<'q>(conn: &'q PgPool, feed: &Feed) -> BoxStream<'q, Result<$field_type, Error>>
+            {
+                sqlx::query_scalar(Self::FETCH_QUERY).bind(feed.id).fetch(conn)
+            }
+
+            async fn fetch_some(conn: &PgPool, feed: &Feed, quantity: i64, last_id: Option<i64>, enabled: Option<bool>, valid_until: Option<Option<DateTime<Utc>>>) -> Result<Vec<Self>, Error> {
+                let mut builder = sqlx::QueryBuilder::new(Self::GET_SOME_QUERY);
+                builder.push_bind(feed.id);
+                if let Some(enabled_cond) = enabled {
+                    builder.push(" AND enabled = ").push_bind(enabled_cond);
+                }
+                if let Some(valid_conf) = valid_until {
+                    builder.push(" AND valid_until");
+                    match valid_conf {
+                        Some(times) => builder.push(" >= ").push_bind(times),
+                        None => builder.push(" IS NULL")
+                    };
+                }
+                builder.push(" AND id > ").push_bind(last_id.unwrap_or(0));
+                builder.push(" LIMIT ").push_bind(quantity);
+                builder.build_query_as().fetch_all(conn).await
+            }
+
+            async fn update(&self, conn: &PgPool) -> Result<(), Error> {
+                sqlx::query(Self::UPDATE_QUERY)
+                    .bind(self.enabled)
+                    .bind(&self.description)
+                    .bind(&self.valid_until)
+                    .bind(self.id)
+                    .execute(conn).await?;
+                Ok(())
+            }
+
+            async fn delete(&self, conn: &PgPool) -> Result<(), Error> {
+                sqlx::query(Self::DELETE_QUERY)
+                    .bind(self.id)
+                    .execute(conn).await?;
+                Ok(())
             }
         }
     }
 }
 
 make_entry_type!(IPEntry, IpNetwork, "ip_entries");
+make_entry_type!(URLEntry, String, "url_entries");
+make_entry_type!(DomainEntry, String, "domain_entries");
 
 /* 
 pub trait TEntry where
