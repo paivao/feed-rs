@@ -5,6 +5,7 @@ use sqlx::postgres::PgRow;
 use sqlx::types::ipnetwork::IpNetwork;
 use futures::stream::BoxStream;
 use sqlx::types::chrono::{DateTime, Utc};
+use std::fmt::Display;
 
 use crate::model::feed::{Feed};
 
@@ -46,12 +47,12 @@ macro_rules! make_entry_type {
                 Ok(Self{id: id, value: value, enabled: true, description: descr, valid_until: valid_until/*, feed_id: feed.id*/})
             }
 
-            fn fetch_values<'q>(conn: &'q PgPool, feed: &Feed) -> BoxStream<'q, Result<$field_type, Error>>
+            pub fn fetch_values<'q>(conn: &'q PgPool, feed: &Feed) -> BoxStream<'q, Result<dyn Display, Error>>
             {
                 sqlx::query_scalar(Self::FETCH_QUERY).bind(feed.id).fetch(conn)
             }
 
-            async fn fetch_some(conn: &PgPool, feed: &Feed, quantity: i64, last_id: Option<i64>, enabled: Option<bool>, valid_until: Option<Option<DateTime<Utc>>>) -> Result<Vec<Self>, Error> {
+            pub async fn fetch_some(conn: &PgPool, feed: &Feed, quantity: i64, last_id: Option<i64>, enabled: Option<bool>, valid_until: Option<Option<DateTime<Utc>>>) -> Result<Vec<Self>, Error> {
                 let mut builder = sqlx::QueryBuilder::new(Self::GET_SOME_QUERY);
                 builder.push_bind(feed.id);
                 if let Some(enabled_cond) = enabled {
@@ -69,7 +70,7 @@ macro_rules! make_entry_type {
                 builder.build_query_as().fetch_all(conn).await
             }
 
-            async fn update(&self, conn: &PgPool) -> Result<(), Error> {
+            pub async fn update(&self, conn: &PgPool) -> Result<(), Error> {
                 sqlx::query(Self::UPDATE_QUERY)
                     .bind(self.enabled)
                     .bind(&self.description)
@@ -79,7 +80,7 @@ macro_rules! make_entry_type {
                 Ok(())
             }
 
-            async fn delete(&self, conn: &PgPool) -> Result<(), Error> {
+            pub async fn delete(&self, conn: &PgPool) -> Result<(), Error> {
                 sqlx::query(Self::DELETE_QUERY)
                     .bind(self.id)
                     .execute(conn).await?;
