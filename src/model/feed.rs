@@ -24,6 +24,7 @@ pub enum FeedType {
 impl Feed {
     const INSERT_QUERY: &'static str = r#"INSERT INTO feeds (value, description, is_public, feed_type) VALUES ($1, $2, $3, $4) RETURNING id;"#;
     const SELECT_QUERY: &'static str = r#"SELECT id, name, description, is_public, digest, type as "feed_type: FeedType" FROM feeds WHERE name = $1 and is_public = $2"#;
+    const UPDATE_DIGEST_QUERY: &'static str = r#"UPDATE feeds SET digest = $1 WHERE id = $2"#;
     
     pub async fn insert(conn: &PgPool, name: String, feed_type: FeedType, description: Option<String>, is_public: Option<bool>) -> Result<Self, Error> {
         let descr = description.unwrap_or(String::new());
@@ -43,6 +44,11 @@ impl Feed {
 
     pub async fn get(conn: &PgPool, name: &str, is_public: Option<bool>) -> Result<Self, Error> {
         sqlx::query_as(Self::SELECT_QUERY).bind(name).bind(is_public.unwrap_or(true)).fetch_one(conn).await
+    }
+
+    pub async fn update_digest(&self, conn: &PgPool) -> Result<(), Error> {
+        sqlx::query(Self::UPDATE_DIGEST_QUERY).bind(&self.digest).bind(self.id).execute(conn).await?;
+        Ok(())
     }
 }
 

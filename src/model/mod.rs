@@ -1,3 +1,3 @@
 //mod entry;
-pub mod entry2;
+pub mod entry;
 pub mod feed;

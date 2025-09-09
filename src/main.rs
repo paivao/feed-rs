@@ -35,7 +35,7 @@ async fn main() -> std::io::Result<()> {
             .route("/", web::get().to(async ||{Redirect::to("/admin").permanent()}))
             .service(fs::Files::new("/admin", "./public"))
             // Feed service
-
+            .service(controller::feed::serve_feed)
             .service(hello)
     }).bind_auto_h2c(get_bind_addr())?.run().await
 }
