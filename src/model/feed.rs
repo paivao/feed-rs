@@ -1,6 +1,7 @@
+use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, Row, Type, PgPool, Error};
 
-#[derive(FromRow)]
+#[derive(FromRow, Serialize, Deserialize)]
 pub struct Feed {
     pub id: i64,
     pub name: String,
@@ -12,7 +13,7 @@ pub struct Feed {
     pub digest: Vec<u8>,
 }
 
-#[derive(Debug, Type)]
+#[derive(Debug, Type, Serialize, Deserialize)]
 #[sqlx(type_name = "FeedType")]
 #[sqlx(rename_all = "lowercase")]
 pub enum FeedType {

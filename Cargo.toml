@@ -10,11 +10,13 @@ futures = "0.3.31"
 actix-web = "4"
 actix-files = "0.6.7"
 md-5 = "0.10.6"
+serde = { version = "1.0.219", features = ["derive"] }
+env_logger = "0.11.8"
 
 [dependencies.sqlx]
 version = "0.7"
 default-features = false
-features = ["macros", "migrate", "chrono", "postgres", "runtime-tokio", "ipnetwork"]
+features = ["macros", "migrate", "chrono", "postgres", "runtime-tokio", "ipnetwork", "json"]
 
 #[dependencies.rocket_db_pools]
 #version = "0.2.0"

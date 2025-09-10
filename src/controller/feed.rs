@@ -1,10 +1,10 @@
-use actix_web::{error, get, web, HttpResponse, Result};
+use actix_web::{error, get, post, put, delete, web::{self, Json}, HttpResponse, Result};
 use futures::stream::{StreamExt, Stream};
 use std::fmt::Display;
 use sqlx::postgres::PgPool;
 use md5::{Digest, Md5};
 
-use crate::model::{feed, entry};
+use crate::model::{entry, feed::{self, Feed}};
 
 #[get("/feed/{name}")]
 pub async fn serve_feed(pool: web::Data<PgPool>, name: web::Path<String>) -> Result<HttpResponse> {
@@ -34,10 +34,47 @@ pub async fn serve_feed(pool: web::Data<PgPool>, name: web::Path<String>) -> Res
     Ok(HttpResponse::Ok().content_type("plain/text").body(entries))
 }
 
+pub fn configure_feed_api(cfg: &mut web::ServiceConfig) {
+    cfg.service(web::scope("/feed")
+        .service(list_feeds)
+        .service(get_feed)
+        .service(create_feed)
+        .service(update_feed)
+        .service(delete_feed)
+    );
+}
+
+#[get("/")]
+async fn list_feeds(pool: web::Data<PgPool>) -> Result<Json<Vec<Feed>>> {
+    todo!()
+}
+
+#[get("/{id}")]
+async fn get_feed(pool: web::Data<PgPool>) -> Result<Json<Feed>> {
+    todo!()
+}
+
+#[post("/{id}")]
+async fn create_feed(pool: web::Data<PgPool>, info: Json<Feed>) -> Result<HttpResponse> {
+    todo!()
+}
+
+#[put("/{id}")]
+async fn update_feed(pool: web::Data<PgPool>, info: Json<Feed>) -> Result<HttpResponse> {
+    todo!()
+}
+
+#[delete("/{id}")]
+async fn delete_feed(pool: web::Data<PgPool>) -> Result<Json<Feed>> {
+    todo!()
+}
+
+// PRIVATE FUNCTIONS
+
 async fn into_string<S, T>(mut stream: S) -> actix_web::Result<String> where 
     S: Stream<Item = Result<T, sqlx::Error>> + Unpin,
     T: Display + Send + Sized,
-{
+    {
     let mut joined = String::new();
     while let Some(result) = stream.next().await {
         match result {
