@@ -1,16 +1,27 @@
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, Row, Type, PgPool, Error};
+use sqlx::{FromRow, Type, PgPool, Error};
 
 #[derive(FromRow, Serialize, Deserialize)]
 pub struct Feed {
-    pub id: i64,
+    id: i64,
     pub name: String,
     #[sqlx(default)]
     pub description: String,
-    pub is_public: bool,
     #[sqlx(rename = "type")]
     pub feed_type: FeedType,
     pub digest: Vec<u8>,
+}
+
+#[derive(Deserialize)]
+pub struct InsertFeedData {
+    pub name: String,
+    pub feed_type: FeedType,
+    pub description: Option<String>
+}
+
+#[derive(Deserialize)]
+pub struct UpdateFeedData {
+    pub description: Option<String>
 }
 
 #[derive(Debug, Type, Serialize, Deserialize)]
@@ -23,28 +34,37 @@ pub enum FeedType {
 }
 
 impl Feed {
-    const INSERT_QUERY: &'static str = r#"INSERT INTO feeds (value, description, is_public, feed_type) VALUES ($1, $2, $3, $4) RETURNING id;"#;
-    const SELECT_QUERY: &'static str = r#"SELECT id, name, description, is_public, digest, type as "feed_type: FeedType" FROM feeds WHERE name = $1 and is_public = $2"#;
+    const INSERT_QUERY: &'static str = r#"INSERT INTO feeds (value, description, feed_type) VALUES ($1, $2, $3, $4) RETURNING id;"#;
+    const GET_QUERY: &'static str = r#"SELECT id, name, description, digest, type as "feed_type: FeedType" FROM feeds WHERE name = $1"#;
+    const GET_ID_QUERY: &'static str = r#"SELECT id, name, description, digest, type as "feed_type: FeedType" FROM feeds WHERE id = $1"#;
+    const LIST_QUERY: &'static str = r#"SELECT id, name, description, digest, type as "feed_type: FeedType" FROM feeds"#;
+    const LIST_SOME_QUERY: &'static str = r#"SELECT id, name, description, digest, type as "feed_type: FeedType" FROM feeds LIMIT $1 OFFSET $2"#;
     const UPDATE_DIGEST_QUERY: &'static str = r#"UPDATE feeds SET digest = $1 WHERE id = $2"#;
     
-    pub async fn insert(conn: &PgPool, name: String, feed_type: FeedType, description: Option<String>, is_public: Option<bool>) -> Result<Self, Error> {
-        let descr = description.unwrap_or(String::new());
+    pub async fn insert(conn: &PgPool, data: InsertFeedData) -> Result<Self, Error> {
+        let descr = data.description.unwrap_or(String::new());
         let id: i64 = sqlx::query_scalar(Self::INSERT_QUERY)
-            .bind(&name)
+            .bind(&data.name)
             .bind(&descr)
-            .bind(is_public.unwrap_or(true))
-            .bind(&feed_type)
+            .bind(&data.feed_type)
             .fetch_one(conn).await?;
-        Ok(Self{id: id, name: name, description: descr, is_public: is_public.unwrap_or(true), feed_type, digest: Vec::new()})
+        Ok(Self{id: id, name: data.name, description: descr, feed_type: data.feed_type, digest: Vec::new()})
     }
 
-    pub async fn list(conn: &PgPool) -> Result<(), Error> {
-        let x: Feed = sqlx::query_as(r#"SELECT id, name, description, is_public, digest, type as "feed_type: FeedType" FROM feeds"#).fetch_one(conn).await?;
-        Ok(())
+    pub async fn list(conn: &PgPool, window: Option<super::Window>) -> Result<Vec<Self>, Error> {
+        if let Some(window) = window {
+            sqlx::query_as(Self::LIST_SOME_QUERY).bind(window.size).bind(window.pos * window.size).fetch_all(conn).await
+        } else {
+            sqlx::query_as(Self::LIST_QUERY).fetch_all(conn).await
+        }
     }
 
-    pub async fn get(conn: &PgPool, name: &str, is_public: Option<bool>) -> Result<Self, Error> {
-        sqlx::query_as(Self::SELECT_QUERY).bind(name).bind(is_public.unwrap_or(true)).fetch_one(conn).await
+    pub async fn get(conn: &PgPool, name: &str) -> Result<Self, Error> {
+        sqlx::query_as(Self::GET_QUERY).bind(name).fetch_one(conn).await
+    }
+
+    pub async fn get_by_id(conn: &PgPool, id: i64) -> Result<Self, Error> {
+        sqlx::query_as(Self::GET_ID_QUERY).bind(id).fetch_one(conn).await
     }
 
     pub async fn update_digest(&self, conn: &PgPool) -> Result<(), Error> {

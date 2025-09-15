@@ -42,10 +42,6 @@ pub fn logging_bootstrap(app_name: &str) {
 
 }
 
-fn create_syslog_logger() {
-
-}
-
 fn open_log_file(log_file: String) -> std::io::Result<std::fs::File> {
     OpenOptions::new()
         .create(true)

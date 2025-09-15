@@ -1,9 +1,7 @@
-use simplelog::SharedLogger;
-use sqlx::postgres::{PgConnectOptions, PgPool, PgPoolOptions};
+use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use std::env;
-use std::fs::{File, OpenOptions};
 use dotenvy::dotenv;
-use actix_web::{get, post, App, HttpResponse, HttpServer, Responder};
+use actix_web::{App, HttpServer};
 use actix_web::web::{self, Redirect};
 use actix_web::middleware::Logger;
 use actix_files as fs;
@@ -19,11 +17,6 @@ const APP_NAME: &str = "feed-rs";
 const DEFAULT_MAX_DB_CONNS: u32 = 5;
 //const DEFAULT_DB: &str = "feedme";
 const DEFAULT_BIND_PORT: u16 = 8080;
-
-#[get("/")]
-async fn hello() -> impl Responder {
-    HttpResponse::Ok().body("Hello world!")
-}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -46,7 +39,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .app_data(web::Data::new(pool.clone()))
             .wrap(Logger::new(r#"%a %t "%r" %s %b "%{Referer}i" "%{User-Agent}i" %T"#)
-                .log_target(format!("{APP_NAME}-http-access")))
+                .log_target(format!("{APP_NAME}::access")))
             // Frontend service
             .route("/", web::get().to(async ||{Redirect::to("/admin").permanent()}))
             .service(fs::Files::new("/admin", "./public"))
@@ -56,7 +49,6 @@ async fn main() -> std::io::Result<()> {
             .service(web::scope("/api")
                 .configure(controller::feed::configure_feed_api)
             )
-            .service(hello)
     }).bind_auto_h2c(get_bind_addr())?.run().await
 }
 

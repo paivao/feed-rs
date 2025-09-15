@@ -1,18 +1,21 @@
-use actix_web::{error, get, post, put, delete, web::{self, Json}, HttpResponse, Result};
+use actix_web::{delete, error, get, http::header::ContentType, post, put, web::{self, Json}, HttpResponse, Result};
 use futures::stream::{StreamExt, Stream};
 use std::fmt::Display;
 use sqlx::postgres::PgPool;
 use md5::{Digest, Md5};
+use log;
 
-use crate::model::{entry, feed::{self, Feed}};
+use crate::model::{entry, feed::{self, Feed, InsertFeedData}};
 
 #[get("/feed/{name}")]
 pub async fn serve_feed(pool: web::Data<PgPool>, name: web::Path<String>) -> Result<HttpResponse> {
-    let mut feed = feed::Feed::get(&**pool, name.as_str(), None).await.map_err(|err| {
+    let mut feed = feed::Feed::get(&**pool, &name).await.map_err(|err| {
         // TODO: logging
         if let sqlx::Error::RowNotFound = err {
+            log::trace!(target: &format!("{}::app", crate::APP_NAME), "Error! Feed not found: {}.", &name);
             error::ErrorNotFound("feed not found")
         } else {
+            log::warn!(target: &format!("{}::app", crate::APP_NAME), "Database error: {:?}", err);
             error::ErrorBadRequest("error in request")
         }
     })?;
@@ -31,7 +34,8 @@ pub async fn serve_feed(pool: web::Data<PgPool>, name: web::Path<String>) -> Res
         let _ = feed.update_digest(&**pool).await;
     }
 
-    Ok(HttpResponse::Ok().content_type("plain/text").body(entries))
+    log::trace!(target: &format!("{}::app", crate::APP_NAME), "Fetch feed: {}", &name);
+    Ok(HttpResponse::Ok().content_type(ContentType::plaintext()).body(entries))
 }
 
 pub fn configure_feed_api(cfg: &mut web::ServiceConfig) {
@@ -45,22 +49,40 @@ pub fn configure_feed_api(cfg: &mut web::ServiceConfig) {
 }
 
 #[get("/")]
-async fn list_feeds(pool: web::Data<PgPool>) -> Result<Json<Vec<Feed>>> {
-    todo!()
+async fn list_feeds(pool: web::Data<PgPool>, window: web::Query<Option<crate::model::Window>>) -> Result<Json<Vec<Feed>>> {
+    let feeds = feed::Feed::list(&**pool, window.into_inner()).await.map_err(|err| {
+        log::warn!(target: &format!("{}::app", crate::APP_NAME), "Database error: {:?}", err);
+        error::ErrorBadRequest("error in request")
+    })?;
+    Ok(web::Json(feeds))
 }
 
 #[get("/{id}")]
-async fn get_feed(pool: web::Data<PgPool>) -> Result<Json<Feed>> {
-    todo!()
+async fn get_feed(pool: web::Data<PgPool>, id: web::Path<i64>) -> Result<Json<Feed>> {
+    let feed = feed::Feed::get_by_id(&**pool, *id).await.map_err(|err| {
+        // TODO: logging
+        if let sqlx::Error::RowNotFound = err {
+            log::trace!(target: &format!("{}::app", crate::APP_NAME), "Error! Feed not found: {}.", id);
+            error::ErrorNotFound("feed not found")
+        } else {
+            log::warn!(target: &format!("{}::app", crate::APP_NAME), "Database error: {:?}", err);
+            error::ErrorBadRequest("error in request")
+        }
+    })?;
+    Ok(web::Json(feed))
 }
 
-#[post("/{id}")]
-async fn create_feed(pool: web::Data<PgPool>, info: Json<Feed>) -> Result<HttpResponse> {
-    todo!()
+#[post("/")]
+async fn create_feed(pool: web::Data<PgPool>, info: web::Json<InsertFeedData>) -> Result<Json<Feed>> {
+    let feed = feed::Feed::insert(&**pool, info.into_inner()).await.map_err(|err| {
+        log::warn!(target: &format!("{}::app", crate::APP_NAME), "Database error: {:?}", err);
+        error::ErrorBadRequest("error in request")
+    })?;
+    Ok(web::Json(feed))
 }
 
 #[put("/{id}")]
-async fn update_feed(pool: web::Data<PgPool>, info: Json<Feed>) -> Result<HttpResponse> {
+async fn update_feed(pool: web::Data<PgPool>, info: web::Json<Feed> , id: web::Path<i64>) -> Result<HttpResponse> {
     todo!()
 }
 
