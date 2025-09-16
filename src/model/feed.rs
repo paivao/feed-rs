@@ -3,7 +3,7 @@ use sqlx::{FromRow, Type, PgPool, Error};
 
 #[derive(FromRow, Serialize, Deserialize)]
 pub struct Feed {
-    id: i64,
+    pub id: i64,
     pub name: String,
     #[sqlx(default)]
     pub description: String,

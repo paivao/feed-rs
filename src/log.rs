@@ -1,7 +1,7 @@
 use std::{env, fs::OpenOptions, str::FromStr as _};
 
 use reopen::Reopen;
-use simplelog::{ConfigBuilder, LevelFilter, SharedLogger, TermLogger, WriteLogger};
+use simplelog::{CombinedLogger, ConfigBuilder, LevelFilter, SharedLogger, TermLogger, WriteLogger};
 
 const LOG_SINKS: [&str; 2] = ["app", "access"];
 
@@ -39,7 +39,7 @@ pub fn logging_bootstrap(app_name: &str) {
             }
         });
     };
-
+    CombinedLogger::init(sinks).expect("Could not load log sinks!");
 }
 
 fn open_log_file(log_file: String) -> std::io::Result<std::fs::File> {
