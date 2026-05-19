@@ -15,6 +15,8 @@ reopen = "1.0.3"
 simplelog = "0.12.2"
 log = "0.4.28"
 actix-web-httpauth = "0.8.2"
+argon2 = "0.5.3"
+async-stream = "0.3.6"
 
 [dependencies.sqlx]
 version = "0.7"

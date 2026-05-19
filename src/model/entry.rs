@@ -1,20 +1,15 @@
 use futures::StreamExt;
-use sqlx::postgres::PgArguments;
-use sqlx::{Postgres, FromRow, PgPool, Row, Encode, Decode, types::Type, Error};
-use sqlx::postgres::PgRow;
-use sqlx::types::ipnetwork::IpNetwork;
 use futures::stream::BoxStream;
+use sqlx::postgres::PgArguments;
+use sqlx::postgres::PgRow;
 use sqlx::types::chrono::{DateTime, Utc};
+use sqlx::types::ipnetwork::IpNetwork;
+use sqlx::{Decode, Encode, Error, FromRow, PgPool, Postgres, Row, types::Type};
 use std::fmt::Display;
 
-use crate::model::feed::{Feed};
+use crate::model::feed::Feed;
 
-const TABLE_NAMES: &'static [&'static str] = &[
-    "ip_entries",
-    "url_entries",
-    "domain_entries"
-];
-
+const TABLE_NAMES: &'static [&'static str] = &["ip_entries", "url_entries", "domain_entries"];
 
 macro_rules! make_entry_type {
     ($name: ident, $field_type: ty, $table_name: literal) => {
@@ -34,7 +29,7 @@ macro_rules! make_entry_type {
             const GET_SOME_QUERY: &'static str = concat!("SELECT (id, value, enabled, description, valid_until) from ", $table_name, " WHERE feed_id = ");
             const UPDATE_QUERY: &'static str = concat!("UPDATE ", $table_name, " SET enabled = $1, description = $2, valid_until = $3 WHERE id = $4;");
             const DELETE_QUERY: &'static str = concat!("DELETE FROM ", $table_name, " WHERE id = $1;");
-            
+
             pub async fn insert(conn: &PgPool, feed: &Feed, value: $field_type, description: Option<String>, valid_until: Option<DateTime<Utc>>) -> Result<Self, Error> {
                 let descr = description.unwrap_or(String::new());
                 let id:i64 = sqlx::query_scalar(Self::INSERT_QUERY)
@@ -47,7 +42,7 @@ macro_rules! make_entry_type {
                 Ok(Self{id: id, value: value, enabled: true, description: descr, valid_until: valid_until/*, feed_id: feed.id*/})
             }
 
-            pub fn fetch_values<'q>(conn: &'q PgPool, feed: &Feed) -> BoxStream<'q, Result<$field_type, Error>>
+            pub fn fetch_values<'q>(conn: PgPool, feed: &Feed) -> BoxStream<'q, Result<$field_type, Error>>
             {
                 sqlx::query_scalar(Self::FETCH_QUERY).bind(feed.id).fetch(conn)
             }
@@ -94,10 +89,10 @@ make_entry_type!(IPEntry, IpNetwork, "ip_entries");
 make_entry_type!(URLEntry, String, "url_entries");
 make_entry_type!(DomainEntry, String, "domain_entries");
 
-/* 
+/*
 pub trait TEntry where
     for <'r> Self: Sized + AsRef<BaseEntry> + AsMut<BaseEntry> + Unpin + FromRow<'r, PgRow> + Send,
-    for <'q> Self::ValueType: Encode<'q, Postgres> + Type<Postgres> + Sync + Unpin + Decode<'q, Postgres> + Send  
+    for <'q> Self::ValueType: Encode<'q, Postgres> + Type<Postgres> + Sync + Unpin + Decode<'q, Postgres> + Send
 {
     type ValueType;
     const INSERT_QUERY: &'static str = ;
@@ -108,7 +103,7 @@ pub trait TEntry where
     fn value(&self) -> &Self::ValueType;
     fn new(value: Self::ValueType, inner: BaseEntry) -> Self;
 
-    
+
 
     fn fetch_values<'q>(conn: &'q PgPool, feed: &Feed) -> BoxStream<'q, Result<Self::ValueType, Error>> where Self::ValueType: 'q
     {
@@ -153,15 +148,15 @@ impl AsMut<BaseEntry> for IPEntry  {
 
 impl TEntry for IPEntry {
     type ValueType = IpNetwork;
-    
+
     fn mut_value(&mut self) -> &mut Self::ValueType {
         &mut self.value
     }
-    
+
     fn value(&self) -> &Self::ValueType {
         &self.value
     }
-    
+
     fn new(value: Self::ValueType, inner: BaseEntry) -> Self {
         Self{value: value, inner: inner}
     }
