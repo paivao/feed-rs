@@ -12,7 +12,7 @@ use futures::{
 use log;
 use md5::{Digest, Md5};
 use sqlx::{self, postgres::PgPool};
-use std::fmt::Display;
+use std::{fmt::Display, ops::Deref};
 
 use crate::model::{
     entry,
@@ -20,68 +20,68 @@ use crate::model::{
 };
 
 #[get("/feed/{name}")]
-pub async fn serve_feed(pool: web::Data<PgPool>, name: web::Path<String>) -> Result<HttpResponse> {
-    let pool_arc = pool.into_inner();
-    let mut feed = feed::Feed::get(&pool_arc, &name).await.map_err(|err| {
-        // TODO: logging
-        if let sqlx::Error::RowNotFound = err {
-            log::trace!(target: &format!("{}::app", crate::APP_NAME), "Error! Feed not found: {}.", &name);
-            error::ErrorNotFound("feed not found")
-        } else {
-            log::warn!(target: &format!("{}::app", crate::APP_NAME), "Database error: {:?}", err);
-            error::ErrorBadRequest("error in request")
+pub async fn serve_feed(pool: web::Data<PgPool>, name: web::Path<String>) -> HttpResponse {
+    let inner_pool = pool.clone();
+    let mut feed = match feed::Feed::get(pool.get_ref(), &name).await {
+        Ok(feed) => feed,
+        Err(err) => {
+            if let sqlx::Error::RowNotFound = err {
+                log::trace!(target: &format!("{}::app", crate::APP_NAME), "Error! Feed not found: {}.", &name);
+                return HttpResponse::NotFound()
+                    .content_type(ContentType::plaintext())
+                    .body("feed not found");
+            } else {
+                log::warn!(target: &format!("{}::app", crate::APP_NAME), "Database error: {:?}", err);
+                return HttpResponse::InternalServerError()
+                    .content_type(ContentType::plaintext())
+                    .body("error in request");
+            }
         }
-    })?;
-
-    let mut data_stream = match feed.feed_type {
-        feed::FeedType::IP => as_lines_bytes(entry::IPEntry::fetch_values(
-            pool_arc.clone().as_ref(),
-            &feed,
-        )),
-        feed::FeedType::URL => as_lines_bytes(entry::URLEntry::fetch_values(
-            pool_arc.clone().as_ref(),
-            &feed,
-        )),
-        feed::FeedType::Domain => as_lines_bytes(entry::DomainEntry::fetch_values(
-            pool_arc.clone().as_ref(),
-            &feed,
-        )),
     };
 
     log::trace!(target: &format!("{}::app", crate::APP_NAME), "Fetch feed: {}", &name);
 
+    let feed_name = name.clone();
+    let mut data_stream =
+        match feed.feed_type {
+            feed::FeedType::IP => entry::IPEntry::fetch_values(&pool, &feed),
+            feed::FeedType::Domain => entry::DomainEntry::fetch_values(&pool, &feed),
+            feed::FeedType::URL => entry::URLEntry::fetch_values(&pool, &feed),
+        }.map_err(move |e| {
+            log::warn!(target: &format!("{}::app", crate::APP_NAME), "Error fetching feed {}. Database error: {:?}", feed_name, e);
+            error::ErrorBadRequest("error in request")
+        }).boxed();
+
     // If MD5 is already there, doesn't need to recalculate
-    if !feed.digest.is_empty() {
-        return Ok(HttpResponse::Ok()
-            .content_type(ContentType::plaintext())
-            .streaming(data_stream));
-    }
-
-    let mut md5_ctx = md5::Md5::new();
-
-    let data_stream = stream! {
-        let this_pool = pool.clone();
-        while let Some(item) = data_stream.next().await {
-            match item {
-                Ok(i) => {
-                    md5_ctx.update(i);
-                    yield Ok(i);
-                },
-                Err(e) => {
-                    yield Err(e);
-                    return;
+    let data_stream = if !feed.digest.is_empty() {
+        data_stream
+    } else {
+        stream! {
+            //let inner_pool = pool.clone();
+            let mut md5_ctx = md5::Md5::new();
+            while let Some(item) = data_stream.next().await {
+                match item {
+                    Ok(i) => {
+                        md5_ctx.update(&i);
+                        yield Ok(i);
+                    },
+                    Err(e) => {
+                        log::warn!("Database error: {e}");
+                        yield Err(error::ErrorInternalServerError("database error"));
+                        return;
+                    },
                 }
+            };
+            feed.digest = md5_ctx.finalize().to_vec();
+            if let Err(e) = feed.update_digest(&inner_pool).await {
+                log::warn!(target: &format!("{}::app", crate::APP_NAME), "Error updating digest for feed {}: {:?}", &name, e);
             }
-        }
-        // Update digest
-        let digest = md5_ctx.finalize();
-        feed.digest = digest.to_vec();
-        feed.update_digest(&this_pool).await;
+        }.boxed_local()
     };
 
-    return Ok(HttpResponse::Ok()
+    HttpResponse::Ok()
         .content_type(ContentType::plaintext())
-        .streaming(data_stream));
+        .streaming(data_stream)
 }
 
 pub fn configure_feed_api(cfg: &mut web::ServiceConfig) {
@@ -154,7 +154,7 @@ async fn delete_feed(pool: web::Data<PgPool>) -> Result<Json<Feed>> {
 
 // PRIVATE FUNCTIONS
 
-fn as_lines_bytes<'a, S, T>(mut stream: S) -> BoxStream<'a, Result<Bytes, actix_web::Error>>
+fn as_lines_bytes<'a, S, T>(stream: S) -> BoxStream<'a, Result<Bytes, actix_web::Error>>
 where
     S: Stream<Item = Result<T, sqlx::Error>> + Unpin + Send + 'a,
     T: Display + Send + Sized,

@@ -1,9 +1,14 @@
 use argon2::password_hash;
+use derive_more::derive::{Display, Error};
 use sqlx;
 
+#[derive(Debug, Display, Error)]
 pub enum ApiError {
+    InternalError,
+    BadRequest,
     DB(sqlx::Error),
     Hashing(password_hash::errors::Error),
+    InvalidPassword,
 }
 
 impl From<sqlx::Error> for ApiError {

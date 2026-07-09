@@ -1,5 +1,6 @@
-use futures::StreamExt;
+use actix_web::web::Bytes;
 use futures::stream::BoxStream;
+use futures::{StreamExt, TryStreamExt};
 use sqlx::postgres::PgArguments;
 use sqlx::postgres::PgRow;
 use sqlx::types::chrono::{DateTime, Utc};
@@ -42,9 +43,9 @@ macro_rules! make_entry_type {
                 Ok(Self{id: id, value: value, enabled: true, description: descr, valid_until: valid_until/*, feed_id: feed.id*/})
             }
 
-            pub fn fetch_values<'q>(conn: PgPool, feed: &Feed) -> BoxStream<'q, Result<$field_type, Error>>
+            pub fn fetch_values<'q>(conn: &'q PgPool, feed: &Feed) -> BoxStream<'q, Result<Bytes, Error>>
             {
-                sqlx::query_scalar(Self::FETCH_QUERY).bind(feed.id).fetch(conn)
+                sqlx::query_scalar(Self::FETCH_QUERY).bind(feed.id).fetch(conn).map_ok(|value: $field_type| format!("{value}\n").into()).boxed()
             }
 
             pub async fn fetch_some(conn: &PgPool, feed: &Feed, quantity: i64, last_id: Option<i64>, enabled: Option<bool>, valid_until: Option<Option<DateTime<Utc>>>) -> Result<Vec<Self>, Error> {
