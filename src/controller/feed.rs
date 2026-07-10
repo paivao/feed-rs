@@ -21,7 +21,6 @@ use crate::model::{
 
 #[get("/feed/{name}")]
 pub async fn serve_feed(pool: web::Data<PgPool>, name: web::Path<String>) -> HttpResponse {
-    let inner_pool = pool.clone();
     let mut feed = match feed::Feed::get(pool.get_ref(), &name).await {
         Ok(feed) => feed,
         Err(err) => {
@@ -42,41 +41,37 @@ pub async fn serve_feed(pool: web::Data<PgPool>, name: web::Path<String>) -> Htt
     log::trace!(target: &format!("{}::app", crate::APP_NAME), "Fetch feed: {}", &name);
 
     let feed_name = name.clone();
-    let mut data_stream =
-        match feed.feed_type {
-            feed::FeedType::IP => entry::IPEntry::fetch_values(&pool, &feed),
-            feed::FeedType::Domain => entry::DomainEntry::fetch_values(&pool, &feed),
-            feed::FeedType::URL => entry::URLEntry::fetch_values(&pool, &feed),
-        }.map_err(move |e| {
-            log::warn!(target: &format!("{}::app", crate::APP_NAME), "Error fetching feed {}. Database error: {:?}", feed_name, e);
-            error::ErrorBadRequest("error in request")
-        }).boxed();
 
     // If MD5 is already there, doesn't need to recalculate
-    let data_stream = if !feed.digest.is_empty() {
-        data_stream
-    } else {
-        stream! {
-            //let inner_pool = pool.clone();
-            let mut md5_ctx = md5::Md5::new();
-            while let Some(item) = data_stream.next().await {
-                match item {
-                    Ok(i) => {
-                        md5_ctx.update(&i);
-                        yield Ok(i);
-                    },
-                    Err(e) => {
-                        log::warn!("Database error: {e}");
-                        yield Err(error::ErrorInternalServerError("database error"));
-                        return;
-                    },
-                }
+    let must_recalculate = feed.digest.is_empty();
+    let data_stream = stream! {
+        let inner_pool = pool.clone();
+        let mut data_stream = match feed.feed_type {
+            feed::FeedType::IP => entry::IPEntry::fetch_values(&inner_pool, &feed),
+            feed::FeedType::Domain => entry::DomainEntry::fetch_values(&inner_pool, &feed),
+            feed::FeedType::URL => entry::URLEntry::fetch_values(&pool, &feed),
+        };
+        let mut md5_ctx = md5::Md5::new();
+        while let Some(item) = data_stream.next().await {
+            let item = match item {
+                Ok(i) => i,
+                Err(e) => {
+                    log::warn!(target: &format!("{}::app", crate::APP_NAME), "Error fetching feed {}. Database error: {:?}", feed_name, e);
+                    yield Err(error::ErrorInternalServerError("database error"));
+                    return;
+                },
             };
+            if must_recalculate {
+                md5_ctx.update(&item);
+            }
+            yield Ok(item);
+        };
+        if must_recalculate {
             feed.digest = md5_ctx.finalize().to_vec();
             if let Err(e) = feed.update_digest(&inner_pool).await {
                 log::warn!(target: &format!("{}::app", crate::APP_NAME), "Error updating digest for feed {}: {:?}", &name, e);
             }
-        }.boxed_local()
+        }
     };
 
     HttpResponse::Ok()

@@ -1,5 +1,4 @@
 use argon2::password_hash;
-use derive_more::derive::{Display, Error};
 use sqlx;
 
 #[derive(Debug, Display, Error)]

@@ -5,6 +5,7 @@ CREATE TABLE feeds (
     name VARCHAR(128) NOT NULL UNIQUE,
     description VARCHAR(255),
     is_public BOOLEAN NOT NULL,
+
     type FeedType NOT NULL
 );
 
