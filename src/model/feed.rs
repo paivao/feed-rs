@@ -27,6 +27,7 @@ pub struct UpdateFeedData {
 #[derive(Debug, Type, Serialize, Deserialize)]
 #[sqlx(type_name = "FeedType")]
 #[sqlx(rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
 pub enum FeedType {
     IP,
     URL,

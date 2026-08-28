@@ -68,9 +68,13 @@ async fn main() -> std::io::Result<()> {
             // Frontend service
             .route(
                 "/",
-                web::get().to(async || Redirect::to("/admin").permanent()),
+                web::get().to(async || Redirect::to("/admin/").permanent()),
             )
-            .service(fs::Files::new("/admin", "./public"))
+            .service(
+                fs::Files::new("/admin", "./public")
+                    .index_file("index.html")
+                    .redirect_to_slash_directory(),
+            )
             // Feed list service
             .service(controller::feed::serve_feed)
             // API

@@ -1,9 +1,306 @@
 <!DOCTYPE html>
-<html>
-    <head>
-        <title>Feed-me</title>
-    </head>
-    <body>
-        
-    </body>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>feed-me · admin</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <link rel="stylesheet" href="/admin/css/app.css">
+    <script src="/admin/js/api.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+    <script defer src="/admin/js/app.js"></script>
+</head>
+<body x-data="adminApp" x-init="init()" x-cloak>
+
+<!-- ── Toasts ─────────────────────────────────────────────── -->
+<div class="toast-stack">
+    <template x-for="t in toasts" :key="t.id">
+        <article class="toast" :class="t.type" x-text="t.msg"></article>
+    </template>
+</div>
+
+<!-- ── Login ──────────────────────────────────────────────── -->
+<main class="container login-wrap" x-show="route.name === 'login'">
+    <article>
+        <hgroup>
+            <h1>feed-me</h1>
+            <p>Threat-intelligence feed administration</p>
+        </hgroup>
+        <form @submit.prevent="doLogin()">
+            <label>
+                Username
+                <input type="text" x-model="loginData.username" autocomplete="username" required autofocus>
+            </label>
+            <label>
+                Password
+                <input type="password" x-model="loginData.password" autocomplete="current-password" required>
+            </label>
+            <p class="error-text" x-show="loginError" x-text="loginError"></p>
+            <button type="submit" :aria-busy="loginBusy" :disabled="loginBusy">Sign in</button>
+        </form>
+    </article>
+</main>
+
+<!-- ── App shell ──────────────────────────────────────────── -->
+<template x-if="route.name !== 'login'">
+<div>
+    <nav class="container-fluid app-nav">
+        <ul>
+            <li><strong>feed-me</strong></li>
+        </ul>
+        <ul>
+            <li><a href="#/feeds" :class="{ active: route.name === 'feeds' || route.name === 'feed' }">Feeds</a></li>
+            <li><a href="#/users" :class="{ active: route.name === 'users' }">Users</a></li>
+            <li><a href="#" @click.prevent="doLogout()">Sign out</a></li>
+        </ul>
+    </nav>
+
+    <main class="container">
+
+        <!-- ── Feeds list ─────────────────────────────────── -->
+        <section x-show="route.name === 'feeds'">
+            <div class="page-head">
+                <h2>Feeds</h2>
+                <button @click="openFeedForm('create')">New feed</button>
+            </div>
+
+            <p x-show="feedsLoading" aria-busy="true">Loading feeds…</p>
+            <p x-show="!feedsLoading && feeds.length === 0">No feeds yet.</p>
+
+            <figure x-show="!feedsLoading && feeds.length > 0">
+            <table role="grid">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Description</th>
+                        <th>Digest</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="f in feeds" :key="f.id">
+                        <tr>
+                            <td><a :href="'#/feeds/' + f.id" x-text="f.name"></a></td>
+                            <td><span class="tag" x-text="f.feed_type"></span></td>
+                            <td x-text="f.description || '—'"></td>
+                            <td><code class="digest" x-text="shortDigest(f.digest)"></code></td>
+                            <td class="row-actions">
+                                <a href="#" @click.prevent="copyFeedUrl(f)">copy URL</a>
+                                <a href="#" @click.prevent="openFeedForm('edit', f)">edit</a>
+                                <a href="#" class="danger" @click.prevent="deleteFeed(f)">delete</a>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+            </figure>
+        </section>
+
+        <!-- ── Feed detail + entries ─────────────────────── -->
+        <section x-show="route.name === 'feed'">
+            <p><a href="#/feeds">← Feeds</a></p>
+
+            <template x-if="currentFeed">
+            <div>
+                <div class="page-head">
+                    <hgroup>
+                        <h2 x-text="currentFeed.name"></h2>
+                        <p>
+                            <span class="tag" x-text="currentFeed.feed_type"></span>
+                            <span x-text="currentFeed.description"></span>
+                        </p>
+                    </hgroup>
+                    <button @click="openFeedForm('edit', currentFeed)" class="secondary">Edit feed</button>
+                </div>
+
+                <p class="feed-url">
+                    <span x-text="feedUrl(currentFeed)"></span>
+                    <a href="#" @click.prevent="copyFeedUrl(currentFeed)">copy</a>
+                </p>
+
+                <div class="page-head">
+                    <h3>Entries</h3>
+                    <div class="entry-tools">
+                        <select x-model="entryFilter" @change="loadEntries()">
+                            <option value="all">All</option>
+                            <option value="enabled">Enabled only</option>
+                            <option value="disabled">Disabled only</option>
+                        </select>
+                        <button @click="openEntryForm('create')">Add entry</button>
+                    </div>
+                </div>
+
+                <p x-show="entriesLoading" aria-busy="true">Loading entries…</p>
+                <p x-show="!entriesLoading && entries.length === 0">No entries.</p>
+
+                <figure x-show="!entriesLoading && entries.length > 0">
+                <table role="grid">
+                    <thead>
+                        <tr>
+                            <th>Value</th>
+                            <th>Enabled</th>
+                            <th>Description</th>
+                            <th>Valid until</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="e in entries" :key="e.id">
+                            <tr :class="{ 'row-muted': !e.enabled }">
+                                <td><code x-text="e.value"></code></td>
+                                <td>
+                                    <input type="checkbox" role="switch" :checked="e.enabled"
+                                           @change="toggleEntry(e, $event.target.checked)">
+                                </td>
+                                <td x-text="e.description || '—'"></td>
+                                <td x-text="fmtDate(e.valid_until)"></td>
+                                <td class="row-actions">
+                                    <a href="#" @click.prevent="openEntryForm('edit', e)">edit</a>
+                                    <a href="#" class="danger" @click.prevent="deleteEntry(e)">delete</a>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+                </figure>
+            </div>
+            </template>
+        </section>
+
+        <!-- ── Users ─────────────────────────────────────── -->
+        <section x-show="route.name === 'users'">
+            <div class="page-head">
+                <h2>Users</h2>
+                <button @click="openUserForm('create')">New user</button>
+            </div>
+
+            <p x-show="usersLoading" aria-busy="true">Loading users…</p>
+            <p x-show="!usersLoading && users.length === 0">No users.</p>
+
+            <figure x-show="!usersLoading && users.length > 0">
+            <table role="grid">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Groups</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="u in users" :key="u.id">
+                        <tr>
+                            <td x-text="u.name"></td>
+                            <td x-text="u.email"></td>
+                            <td x-text="(u.groups || []).map(g => g.name).join(', ') || '—'"></td>
+                            <td class="row-actions">
+                                <a href="#" @click.prevent="openUserForm('edit', u)">edit</a>
+                                <a href="#" class="danger" @click.prevent="deleteUser(u)">delete</a>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+            </figure>
+        </section>
+
+    </main>
+
+    <!-- ── Feed form dialog ──────────────────────────────── -->
+    <dialog :open="feedForm.open">
+        <article>
+            <header>
+                <a href="#" aria-label="Close" class="close" @click.prevent="feedForm.open = false"></a>
+                <strong x-text="feedForm.mode === 'create' ? 'New feed' : 'Edit feed'"></strong>
+            </header>
+            <form @submit.prevent="submitFeedForm()">
+                <label>
+                    Name
+                    <input type="text" x-model="feedForm.data.name" :disabled="feedForm.mode === 'edit'" required>
+                </label>
+                <label>
+                    Type
+                    <select x-model="feedForm.data.feed_type" :disabled="feedForm.mode === 'edit'" required>
+                        <option value="ip">ip</option>
+                        <option value="domain">domain</option>
+                        <option value="url">url</option>
+                    </select>
+                </label>
+                <label>
+                    Description
+                    <input type="text" x-model="feedForm.data.description">
+                </label>
+                <footer>
+                    <button type="button" class="secondary" @click="feedForm.open = false">Cancel</button>
+                    <button type="submit" :aria-busy="feedForm.busy">Save</button>
+                </footer>
+            </form>
+        </article>
+    </dialog>
+
+    <!-- ── Entry form dialog ─────────────────────────────── -->
+    <dialog :open="entryForm.open">
+        <article>
+            <header>
+                <a href="#" aria-label="Close" class="close" @click.prevent="entryForm.open = false"></a>
+                <strong x-text="entryForm.mode === 'create' ? 'Add entry' : 'Edit entry'"></strong>
+            </header>
+            <form @submit.prevent="submitEntryForm()">
+                <label>
+                    Value
+                    <input type="text" x-model="entryForm.data.value" :disabled="entryForm.mode === 'edit'"
+                           :placeholder="valuePlaceholder()" required>
+                </label>
+                <label>
+                    Description
+                    <input type="text" x-model="entryForm.data.description">
+                </label>
+                <label>
+                    Valid until
+                    <input type="datetime-local" x-model="entryForm.data.valid_until">
+                </label>
+                <label>
+                    <input type="checkbox" role="switch" x-model="entryForm.data.enabled">
+                    Enabled
+                </label>
+                <footer>
+                    <button type="button" class="secondary" @click="entryForm.open = false">Cancel</button>
+                    <button type="submit" :aria-busy="entryForm.busy">Save</button>
+                </footer>
+            </form>
+        </article>
+    </dialog>
+
+    <!-- ── User form dialog ──────────────────────────────── -->
+    <dialog :open="userForm.open">
+        <article>
+            <header>
+                <a href="#" aria-label="Close" class="close" @click.prevent="userForm.open = false"></a>
+                <strong x-text="userForm.mode === 'create' ? 'New user' : 'Edit user'"></strong>
+            </header>
+            <form @submit.prevent="submitUserForm()">
+                <label>
+                    Name
+                    <input type="text" x-model="userForm.data.name" required>
+                </label>
+                <label>
+                    Email
+                    <input type="email" x-model="userForm.data.email" required>
+                </label>
+                <label x-show="userForm.mode === 'create'">
+                    Password
+                    <input type="password" x-model="userForm.data.password" autocomplete="new-password">
+                </label>
+                <footer>
+                    <button type="button" class="secondary" @click="userForm.open = false">Cancel</button>
+                    <button type="submit" :aria-busy="userForm.busy">Save</button>
+                </footer>
+            </form>
+        </article>
+    </dialog>
+</div>
+</template>
+
+</body>
 </html>

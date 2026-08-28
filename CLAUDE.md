@@ -13,7 +13,7 @@ Two faces:
 1. **Feed endpoint** — serves a feed as a plain-text file, one entry per line
    (`GET /feed/{name}`). This is what the appliances poll; it must stay fast and cheap.
 2. **Admin console** — an SPA for managing feeds, feed entries and users, backed by a
-   JSON API under `/api`.
+   JSON API under `/api` (managed by users)
 
 ## Tech stack
 
@@ -25,7 +25,7 @@ Two faces:
   startup from `./migrations` via `sqlx::migrate!`.
 - **Auth:** bearer tokens; passwords hashed with Argon2 (`argon2` crate).
 - **Logging:** `log` + `simplelog`, wired up in `src/log.rs` (see "Logging" below).
-- **Frontend:** intended to be a **simple Vue** SPA served as static files from
+- **Frontend:** intended to be a **simple Alpine.js** served as static files from
   `./public`. Keep it minimal — no heavy build tooling unless it becomes necessary.
 
 ## Layout
@@ -45,7 +45,7 @@ src/
     user.rs          User, Group; users table access
 migrations/          sqlx SQL migrations (applied on startup)
 scripts/             one-off SQL (DB/user bootstrap)
-public/              static frontend (Vue SPA target)
+public/              static frontend (Alpine.js)
 ```
 
 ## Feed types are handled separately on purpose
@@ -140,4 +140,14 @@ This is an **early-stage WIP**. Expect rough edges:
 
 When filling these in, keep the two-surface split clean: the feed endpoint stays a
 lean streaming text response; everything management-related goes through `/api` + the
-Vue console.
+Alpine.
+
+## LLM coding guide
+
+1. Be concise on the answer. If user not ask for explanation, it is because is not needed.
+2. Comments only for complex tasks. If code itself is simple and straight, I can understand
+what was done by just reading it. If I don't understand, I will ask for it.
+3. Avoid new dependencies if they are not needed. Use as much as possible the language
+standard library, and if the functionality is small, code it, or leave a TODO for me to do.
+4. Don't advance a step if it was not on the prompt. If was told to do X, don't automatically
+do X and Y, just X.
