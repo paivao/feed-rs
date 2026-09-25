@@ -24,3 +24,8 @@ pub fn verify_password(hash: &str, password: &str) -> bool {
         }
     }
 }
+
+/// A random, URL-safe token suitable for use as a session id.
+pub fn generate_session_token() -> String {
+    SaltString::generate(&mut OsRng).to_string()
+}

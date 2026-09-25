@@ -1,16 +1,15 @@
 use crate::error::ApiError;
-use crate::utils::{self, create_password, verify_password};
-use serde::Deserialize;
-use sqlx::Error::Database;
+use crate::utils::{create_password, verify_password};
+use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row, prelude::FromRow};
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Serialize, Default, Clone)]
 pub struct Group {
     pub id: i64,
     pub name: String,
 }
 
-#[derive(FromRow, Deserialize)]
+#[derive(FromRow, Deserialize, Serialize, Clone)]
 pub struct User {
     pub id: i64,
     pub name: String,
@@ -25,7 +24,7 @@ impl User {
     const GET_BY_EMAIL_QUERY: &'static str =
         r#"SELECT id, name, email FROM users WHERE email = $1"#;
     const GET_BY_NAME_QUERY: &'static str = r#"SELECT id, name, email FROM users WHERE name = $1"#;
-    const UPDATE_QUERY: &'static str = r#"UPDATE users SET name = $1, email $2 WHERE id = $3"#;
+    const UPDATE_QUERY: &'static str = r#"UPDATE users SET name = $1, email = $2 WHERE id = $3"#;
     /// Create a new user in the database
     pub async fn create(
         pool: &PgPool,
@@ -82,22 +81,23 @@ impl User {
     }
 
     /// Get a user by username
-    pub async fn get_by_name(pool: &PgPool, name: &str) -> Result<Option<Self>, sqlx::Error> {
+    pub async fn get_by_name(pool: &PgPool, name: &str) -> Result<Self, ApiError> {
         let row = sqlx::query(Self::GET_BY_NAME_QUERY)
             .bind(name)
             .fetch_optional(pool)
             .await?;
 
-        Ok(row.map(|r| User {
+        row.map(|r| User {
             id: r.get("id"),
             name: r.get("name"),
             email: r.get("email"),
             groups: Vec::new(),
-        }))
+        })
+        .ok_or(ApiError::NotFound)
     }
 
     /// Update user information
-    pub async fn update(&self, pool: &PgPool) -> Result<(), sqlx::Error> {
+    pub async fn update(&self, pool: &PgPool) -> Result<(), ApiError> {
         let row = sqlx::query(Self::UPDATE_QUERY)
             .bind(&self.name)
             .bind(&self.email)
@@ -105,10 +105,11 @@ impl User {
             .execute(pool)
             .await?;
 
-        if row.rows_affected() != 1 {
+        return if row.rows_affected() != 1 {
             Err(ApiError::DB(sqlx::Error::RowNotFound))
-        }
-        Ok(())
+        } else {
+            Ok(())
+        };
     }
 
     /// Delete a user by ID
@@ -144,7 +145,6 @@ impl User {
             id: user.get("id"),
             name: user.get("name"),
             email: user.get("email"),
-            password_hash: user.get("password_hash"),
             groups: Vec::new(),
         });
     }
@@ -169,7 +169,6 @@ impl User {
                 id: r.get("id"),
                 name: r.get("name"),
                 email: r.get("email"),
-                password_hash: r.get("password_hash"),
                 groups: Vec::new(),
             })
             .collect())

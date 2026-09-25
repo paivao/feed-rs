@@ -1,20 +1,16 @@
 use actix_web::web::Bytes;
 use futures::stream::BoxStream;
 use futures::{StreamExt, TryStreamExt};
-use sqlx::postgres::PgArguments;
-use sqlx::postgres::PgRow;
+use serde::Serialize;
 use sqlx::types::chrono::{DateTime, Utc};
 use sqlx::types::ipnetwork::IpNetwork;
-use sqlx::{Decode, Encode, Error, FromRow, PgPool, Postgres, Row, types::Type};
-use std::fmt::Display;
+use sqlx::{Error, FromRow, PgPool};
 
 use crate::model::feed::Feed;
 
-const TABLE_NAMES: &'static [&'static str] = &["ip_entries", "url_entries", "domain_entries"];
-
 macro_rules! make_entry_type {
     ($name: ident, $field_type: ty, $table_name: literal) => {
-        #[derive(Debug, Clone, FromRow)]
+        #[derive(Debug, Clone, FromRow, Serialize)]
         pub struct $name {
             pub id: i64,
             pub value: $field_type,
@@ -25,11 +21,12 @@ macro_rules! make_entry_type {
         }
 
         impl $name {
-            const INSERT_QUERY: &'static str = concat!("INSERT INTO ", $table_name, " (value, enabled, feed_id, description, valid_until) VALUES $1, $2, $3, $4, $5 RETURNING id;");
+            const INSERT_QUERY: &'static str = concat!("INSERT INTO ", $table_name, " (value, enabled, feed_id, description, valid_until) VALUES ($1, $2, $3, $4, $5) RETURNING id;");
             const FETCH_QUERY: &'static str = concat!("SELECT value from ", $table_name, " WHERE feed_id = $1 AND enabled = TRUE AND (valid_until IS NULL OR valid_until >= NOW())");
-            const GET_SOME_QUERY: &'static str = concat!("SELECT (id, value, enabled, description, valid_until) from ", $table_name, " WHERE feed_id = ");
-            const UPDATE_QUERY: &'static str = concat!("UPDATE ", $table_name, " SET enabled = $1, description = $2, valid_until = $3 WHERE id = $4;");
-            const DELETE_QUERY: &'static str = concat!("DELETE FROM ", $table_name, " WHERE id = $1;");
+            const GET_QUERY: &'static str = concat!("SELECT id, value, enabled, description, valid_until FROM ", $table_name, " WHERE id = $1 AND feed_id = $2");
+            const GET_SOME_QUERY: &'static str = concat!("SELECT id, value, enabled, description, valid_until FROM ", $table_name, " WHERE feed_id = ");
+            const UPDATE_QUERY: &'static str = concat!("UPDATE ", $table_name, " SET enabled = $1, description = $2, valid_until = $3 WHERE id = $4 AND feed_id = $5;");
+            const DELETE_QUERY: &'static str = concat!("DELETE FROM ", $table_name, " WHERE id = $1 AND feed_id = $2;");
 
             pub async fn insert(conn: &PgPool, feed: &Feed, value: $field_type, description: Option<String>, valid_until: Option<DateTime<Utc>>) -> Result<Self, Error> {
                 let descr = description.unwrap_or(String::new());
@@ -46,6 +43,11 @@ macro_rules! make_entry_type {
             pub fn fetch_values<'q>(conn: &'q PgPool, feed: &Feed) -> BoxStream<'q, Result<Bytes, Error>>
             {
                 sqlx::query_scalar(Self::FETCH_QUERY).bind(feed.id).fetch(conn).map_ok(|value: $field_type| format!("{value}\n").into()).boxed()
+            }
+
+            /// Fetch a single entry by id, scoped to the given feed.
+            pub async fn get(conn: &PgPool, feed: &Feed, id: i64) -> Result<Self, Error> {
+                sqlx::query_as(Self::GET_QUERY).bind(id).bind(feed.id).fetch_one(conn).await
             }
 
             pub async fn fetch_some(conn: &PgPool, feed: &Feed, quantity: i64, last_id: Option<i64>, enabled: Option<bool>, valid_until: Option<Option<DateTime<Utc>>>) -> Result<Vec<Self>, Error> {
@@ -66,21 +68,27 @@ macro_rules! make_entry_type {
                 builder.build_query_as().fetch_all(conn).await
             }
 
-            pub async fn update(&self, conn: &PgPool) -> Result<(), Error> {
+            /// Update an entry's mutable fields (value is immutable), scoped to the given feed,
+            /// returning the row as it now stands.
+            pub async fn update(conn: &PgPool, feed: &Feed, id: i64, enabled: bool, description: Option<String>, valid_until: Option<DateTime<Utc>>) -> Result<Self, Error> {
+                let descr = description.unwrap_or(String::new());
                 sqlx::query(Self::UPDATE_QUERY)
-                    .bind(self.enabled)
-                    .bind(&self.description)
-                    .bind(&self.valid_until)
-                    .bind(self.id)
+                    .bind(enabled)
+                    .bind(&descr)
+                    .bind(&valid_until)
+                    .bind(id)
+                    .bind(feed.id)
                     .execute(conn).await?;
-                Ok(())
+                Self::get(conn, feed, id).await
             }
 
-            pub async fn delete(&self, conn: &PgPool) -> Result<(), Error> {
-                sqlx::query(Self::DELETE_QUERY)
-                    .bind(self.id)
+            /// Delete an entry by id, scoped to the given feed. Returns whether a row was deleted.
+            pub async fn delete(conn: &PgPool, feed: &Feed, id: i64) -> Result<bool, Error> {
+                let result = sqlx::query(Self::DELETE_QUERY)
+                    .bind(id)
+                    .bind(feed.id)
                     .execute(conn).await?;
-                Ok(())
+                Ok(result.rows_affected() > 0)
             }
         }
     }

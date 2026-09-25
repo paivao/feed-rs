@@ -1,0 +1,27 @@
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: feedme
+      POSTGRES_PASSWORD: feedme@test
+      POSTGRES_DB: feedme_test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U feedme -d feedme_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    build: .
+    command: ["--env-file", ".env.docker", "migrate"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  app:
+    build: .
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8080:8080"

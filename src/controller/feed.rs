@@ -5,21 +5,18 @@ use actix_web::{
     web::{self, Bytes, Json},
 };
 use async_stream::stream;
-use futures::{
-    TryStreamExt,
-    stream::{BoxStream, Stream, StreamExt},
-};
+use futures::stream::{BoxStream, Stream, StreamExt};
 use log;
-use md5::{Digest, Md5};
+use md5::Digest;
 use sqlx::{self, postgres::PgPool};
-use std::{fmt::Display, ops::Deref};
+use std::fmt::Display;
 
 use crate::model::{
     entry,
     feed::{self, Feed, InsertFeedData},
 };
 
-#[get("/feed/{name}")]
+#[get("/{name}")]
 pub async fn serve_feed(pool: web::Data<PgPool>, name: web::Path<String>) -> HttpResponse {
     let mut feed = match feed::Feed::get(pool.get_ref(), &name).await {
         Ok(feed) => feed,

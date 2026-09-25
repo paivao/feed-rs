@@ -1,8 +1,9 @@
 use argon2::password_hash;
 use sqlx;
 
-#[derive(Debug, Display, Error)]
+#[derive(Debug)]
 pub enum ApiError {
+    NotFound,
     InternalError,
     BadRequest,
     DB(sqlx::Error),
