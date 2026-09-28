@@ -20,7 +20,7 @@ pub fn logging_bootstrap(app_name: &str) {
         .to_owned();
 
     for sink in LOG_SINKS {
-        let env_var_name = format!("{}_LEVEL", sink.to_uppercase());
+        let env_var_name = format!("{}_LOG", sink.to_uppercase());
         let level_env_var_name = format!("{}_LEVEL", &env_var_name);
         let log_level = env::var(&level_env_var_name).unwrap_or(String::from("info"));
         let log_level = LevelFilter::from_str(&log_level).expect(&format!(

@@ -10,6 +10,7 @@
 document.addEventListener("alpine:init", () => {
     Alpine.data("adminApp", () => ({
         route: { name: "feeds", params: {} },
+        authChecked: false,
         toasts: [],
 
         // login
@@ -35,16 +36,29 @@ document.addEventListener("alpine:init", () => {
         userForm: { open: false, mode: "create", id: null, busy: false, data: {} },
 
         // ── lifecycle ───────────────────────────────────────
-        init() {
+        async init() {
             window.addEventListener("unauthorized", () => this.onUnauthorized());
             window.addEventListener("hashchange", () => this.handleRoute());
-            this.handleRoute();
+
+            try {
+                await api.me();
+                await this.handleRoute();
+            } catch (e) {
+                // 401 already redirected to #/login via the "unauthorized" event;
+                // anything else is a real error worth surfacing.
+                if (!(e instanceof api.ApiError && e.status === 401)) this.handle(e);
+            } finally {
+                this.authChecked = true;
+            }
         },
 
         onUnauthorized() {
             if (this.route.name !== "login") {
                 this.loginError = "Please sign in.";
-                window.location.hash = "#/login";
+                // Set the route directly (not just the hash) so the login form shows
+                // immediately instead of waiting on the async "hashchange" event.
+                this.route = { name: "login", params: {} };
+                if (window.location.hash !== "#/login") window.location.hash = "#/login";
             }
         },
 

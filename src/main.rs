@@ -21,14 +21,7 @@ const DEFAULT_MAX_DB_CONNS: u32 = 5;
 //const DEFAULT_DB: &str = "feedme";
 const DEFAULT_BIND_PORT: u16 = 8080;
 
-enum Command {
-    Serve,
-    Migrate,
-    Upgrade,
-}
-
 struct Args {
-    command: Command,
     env_file: Option<PathBuf>,
 }
 
@@ -46,24 +39,15 @@ async fn main() -> std::io::Result<()> {
     }
     logging_bootstrap(APP_NAME);
 
-    match args.command {
-        Command::Serve => {
-            let pool = connect_db().await;
-            run_migrations(pool.get_ref()).await;
-            server::run(pool).await
-        }
-        Command::Migrate => {
-            let pool = connect_db().await;
-            run_migrations(pool.get_ref()).await;
-            Ok(())
-        }
-        Command::Upgrade => todo!("version upgrade not implemented yet"),
-    }
+    let pool = connect_db().await;
+    println!("Starting migrations...");
+    run_migrations(pool.get_ref()).await;
+    println!("Migrations executed successfully.");
+    server::run(pool).await
 }
 
 fn parse_args() -> Args {
     let mut env_file = None;
-    let mut positional = Vec::new();
 
     let mut args = env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -75,23 +59,14 @@ fn parse_args() -> Args {
                 });
                 env_file = Some(PathBuf::from(path));
             }
-            other => positional.push(other.to_string()),
+            other => {
+                eprintln!("Unknown argument: {other}\nUsage: feed-rs [--env-file <path>]");
+                std::process::exit(1);
+            }
         }
     }
 
-    let command = match positional.first().map(String::as_str) {
-        None | Some("serve") => Command::Serve,
-        Some("migrate") => Command::Migrate,
-        Some("upgrade") => Command::Upgrade,
-        Some(other) => {
-            eprintln!(
-                "Unknown command: {other}\nUsage: feed-rs [--env-file <path>] [serve|migrate|upgrade]"
-            );
-            std::process::exit(1);
-        }
-    };
-
-    Args { command, env_file }
+    Args { env_file }
 }
 
 async fn connect_db() -> web::Data<PgPool> {

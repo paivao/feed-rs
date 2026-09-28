@@ -5,13 +5,13 @@ use sqlx::{PgPool, Row, prelude::FromRow};
 
 #[derive(Deserialize, Serialize, Default, Clone)]
 pub struct Group {
-    pub id: i64,
+    pub id: i32,
     pub name: String,
 }
 
 #[derive(FromRow, Deserialize, Serialize, Clone)]
 pub struct User {
-    pub id: i64,
+    pub id: i32,
     pub name: String,
     pub email: String,
     #[sqlx(default)]

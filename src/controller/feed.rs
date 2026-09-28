@@ -90,7 +90,7 @@ pub fn configure_feed_api(cfg: &mut web::ServiceConfig) {
 #[get("/")]
 async fn list_feeds(
     pool: web::Data<PgPool>,
-    window: web::Query<Option<crate::model::Window>>,
+    window: web::Query<crate::model::Window>,
 ) -> Result<Json<Vec<Feed>>> {
     let feeds = feed::Feed::list(&**pool, window.into_inner())
         .await
@@ -98,6 +98,7 @@ async fn list_feeds(
             log::warn!(target: &format!("{}::app", crate::APP_NAME), "Database error: {:?}", err);
             error::ErrorBadRequest("error in request")
         })?;
+    println!("Got {} feeds", feeds.len());
     Ok(web::Json(feeds))
 }
 

@@ -4,8 +4,9 @@ WORKDIR /app
 COPY target/release/feed-rs ./feed-rs
 COPY public ./public
 COPY .env.docker ./.env.docker
+ENV RUST_BACKTRACE=full
 
 EXPOSE 8080
 RUN chmod +x ./feed-rs
 ENTRYPOINT ["./feed-rs"]
-CMD ["--env-file", ".env.docker", "serve"]
+CMD ["--env-file", ".env.docker"]

@@ -42,6 +42,7 @@ impl Feed {
         r#"SELECT id, name, description, digest, type as "feed_type: FeedType" FROM feeds"#;
     const LIST_SOME_QUERY: &'static str = r#"SELECT id, name, description, digest, type as "feed_type: FeedType" FROM feeds LIMIT $1 OFFSET $2"#;
     const UPDATE_DIGEST_QUERY: &'static str = r#"UPDATE feeds SET digest = $1 WHERE id = $2"#;
+    const DEFAULT_LIMIT: i32 = 100;
 
     pub async fn insert(conn: &PgPool, data: InsertFeedData) -> Result<Self, Error> {
         let descr = data.description.unwrap_or(String::new());
@@ -60,16 +61,14 @@ impl Feed {
         })
     }
 
-    pub async fn list(conn: &PgPool, window: Option<super::Window>) -> Result<Vec<Self>, Error> {
-        if let Some(window) = window {
-            sqlx::query_as(Self::LIST_SOME_QUERY)
-                .bind(window.size)
-                .bind(window.pos * window.size)
-                .fetch_all(conn)
-                .await
-        } else {
-            sqlx::query_as(Self::LIST_QUERY).fetch_all(conn).await
-        }
+    pub async fn list(conn: &PgPool, window: super::Window) -> Result<Vec<Self>, Error> {
+        let size = window.size.unwrap_or(Self::DEFAULT_LIMIT);
+        let window = window.pos.unwrap_or(0);
+        sqlx::query_as(Self::LIST_SOME_QUERY)
+            .bind(size)
+            .bind(window * size)
+            .fetch_all(conn)
+            .await
     }
 
     pub async fn get(conn: &PgPool, name: &str) -> Result<Self, Error> {

@@ -13,13 +13,18 @@ pub fn create_password(password: &str) -> Result<String, ApiError> {
 }
 
 pub fn verify_password(hash: &str, password: &str) -> bool {
-    let Ok(hash_object) = PasswordHash::new(hash) else {
-        return false;
+    let hash_object = match PasswordHash::new(hash) {
+        Ok(hash_object) => hash_object,
+        Err(e) => {
+            println!("Failed to initialize password hasher: {}", e);
+            return false;
+        }
     };
     match Argon2::default().verify_password(password.as_bytes(), &hash_object) {
-        Ok(_) => true,
-        Err(_) => {
+        Ok(()) => true,
+        Err(e) => {
             // TODO: logging
+            println!("Failed to verify password: {}", e);
             false
         }
     }

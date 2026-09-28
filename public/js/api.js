@@ -75,6 +75,7 @@
         // auth
         login: (username, password) => request("POST", "/login", { username, password }),
         logout: () => request("POST", "/logout"),
+        me: () => request("GET", "/me"),
 
         // feeds
         feeds: {

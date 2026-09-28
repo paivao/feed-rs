@@ -7,6 +7,6 @@ pub mod user;
 
 #[derive(Deserialize)]
 pub(crate) struct Window {
-    pub(crate) pos: i32,
-    pub(crate) size: i32,
+    pub(crate) pos: Option<i32>,
+    pub(crate) size: Option<i32>,
 }

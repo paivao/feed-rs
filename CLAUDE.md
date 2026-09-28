@@ -98,6 +98,8 @@ if missing). `.env` is gitignored. Known variables:
 | `DB_POOL_MAX_CONNS`  | `5`           | Max DB pool connections                             |
 | `BIND_HOST`          | `127.0.0.1`   | Listen host                                         |
 | `BIND_PORT`          | `8080`        | Listen port                                         |
+| `TLS_CERT_FILE`      | —             | PEM certificate chain; with `TLS_KEY_FILE`, enables HTTPS (rustls) |
+| `TLS_KEY_FILE`       | —             | PEM private key; if either TLS var is unset, server runs plain HTTP |
 | `APP_LEVEL`          | `stderr`      | `app` log sink target: `stderr` or a file path      |
 | `ACCESS_LEVEL`       | `stderr`      | `access` log sink target: `stderr` or a file path   |
 | `APP_LEVEL_LEVEL`    | `info`        | Level filter for the `app` sink                     |

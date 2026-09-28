@@ -19,8 +19,13 @@
     </template>
 </div>
 
+<!-- ── Checking session ───────────────────────────────────── -->
+<main class="container" x-show="!authChecked">
+    <p aria-busy="true">Loading…</p>
+</main>
+
 <!-- ── Login ──────────────────────────────────────────────── -->
-<main class="container login-wrap" x-show="route.name === 'login'">
+<main class="container login-wrap" x-show="authChecked && route.name === 'login'">
     <article>
         <hgroup>
             <h1>feed-me</h1>
@@ -42,7 +47,7 @@
 </main>
 
 <!-- ── App shell ──────────────────────────────────────────── -->
-<template x-if="route.name !== 'login'">
+<template x-if="authChecked && route.name !== 'login'">
 <div>
     <nav class="container-fluid app-nav">
         <ul>

@@ -11,17 +11,10 @@ services:
       timeout: 3s
       retries: 20
 
-  migrate:
-    build: .
-    command: ["--env-file", ".env.docker", "migrate"]
-    depends_on:
-      db:
-        condition: service_healthy
-
   app:
     build: .
     depends_on:
-      migrate:
-        condition: service_completed_successfully
+      db:
+        condition: service_healthy
     ports:
       - "8080:8080"

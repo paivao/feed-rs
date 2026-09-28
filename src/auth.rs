@@ -4,7 +4,7 @@ use actix_web::cookie::time::{Duration, OffsetDateTime};
 use actix_web::dev::{ServiceRequest, ServiceResponse};
 use actix_web::error::{ErrorInternalServerError, ErrorUnauthorized};
 use actix_web::middleware::Next;
-use actix_web::{Error, web};
+use actix_web::{Error, HttpMessage, web};
 use actix_web_httpauth::extractors::basic::BasicAuth;
 use sqlx::PgPool;
 use std::collections::HashMap;
@@ -38,27 +38,29 @@ pub async fn basic_validator(
 }
 
 /// Cookie-session authentication for the admin API: requires a valid, non-expired
-/// session created by `POST /api/login`.
+/// session created by `POST /api/login`. Stashes the logged-in user on the request so
+/// handlers can pull it back out via `web::ReqData<User>` (see `GET /api/me`).
 pub async fn session_validator(
     req: ServiceRequest,
     next: Next<impl MessageBody + 'static>,
 ) -> Result<ServiceResponse<impl MessageBody>, Error> {
     let token = req.cookie(SESSION_COOKIE).map(|c| c.value().to_string());
 
-    let is_valid = match (token, req.app_data::<web::Data<SessionStore>>()) {
+    let user = match (token, req.app_data::<web::Data<SessionStore>>()) {
         (Some(token), Some(sessions)) => {
             let sessions = sessions.lock().unwrap();
-            sessions
-                .get(&token)
-                .is_some_and(|(expires_at, _)| *expires_at > OffsetDateTime::now_utc())
+            sessions.get(&token).and_then(|(expires_at, user)| {
+                (*expires_at > OffsetDateTime::now_utc()).then(|| user.clone())
+            })
         }
-        _ => false,
+        _ => None,
     };
 
-    if !is_valid {
+    let Some(user) = user else {
         return Err(ErrorUnauthorized("unauthorized"));
-    }
+    };
 
+    req.extensions_mut().insert(user);
     next.call(req).await
 }
 

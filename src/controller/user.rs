@@ -15,7 +15,7 @@ pub fn configure_auth_api(cfg: &mut web::ServiceConfig) {
 }
 
 pub fn configure_user_api(cfg: &mut web::ServiceConfig) {
-    cfg.service(
+    cfg.service(me).service(
         web::scope("/user")
             .service(list_users)
             .service(get_user)
@@ -23,6 +23,13 @@ pub fn configure_user_api(cfg: &mut web::ServiceConfig) {
             .service(update_user)
             .service(delete_user),
     );
+}
+
+/// The currently logged-in user, as resolved by `auth::session_validator` from the
+/// session cookie. 401s (via the middleware) if there's no valid session.
+#[get("/me")]
+async fn me(user: web::ReqData<User>) -> Result<Json<User>> {
+    Ok(Json(user.into_inner()))
 }
 
 #[derive(Deserialize)]
@@ -40,7 +47,10 @@ async fn login(
     let info = info.into_inner();
     let user = User::verify_credentials(&pool, &info.username, &info.password)
         .await
-        .map_err(|_| error::ErrorUnauthorized("invalid credentials"))?;
+        .map_err(|e| {
+            println!("Failed to verify credentials: {}", e);
+            error::ErrorUnauthorized("invalid credentials")
+        })?;
 
     let cookie = auth::issue_session_cookie(&sessions, user.clone());
     Ok(HttpResponse::Ok().cookie(cookie).json(user))

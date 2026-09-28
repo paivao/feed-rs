@@ -8,8 +8,10 @@ chrono = { version = "0.4", features = ["serde"] }
 const_format = "0.2.34"
 dotenvy = "0.15.7"
 futures = "0.3.31"
-actix-web = "4"
+actix-web = { version = "4", features = ["rustls-0_23"] }
 actix-files = "0.6.7"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-pemfile = "2"
 md-5 = "0.10.6"
 serde = { version = "1.0.219", features = ["derive"] }
 reopen = "1.0.3"

@@ -5,7 +5,7 @@ CREATE TABLE feeds (
     name VARCHAR(128) NOT NULL UNIQUE,
     description VARCHAR(255),
     is_public BOOLEAN NOT NULL,
-
+    digest VARCHAR(255),
     type FeedType NOT NULL
 );
 
@@ -83,5 +83,5 @@ CREATE TABLE _user_group_ (
     FOREIGN KEY (group_id) REFERENCES groups(id) ON UPDATE CASCADE ON DELETE CASCADE
 );
 
--- admin:gofeed
-INSERT INTO users (name, email, password_hash) VALUES ('admin', 'admin@feed.me', '$2b$05$gF2CW3YsRxtlc9o1msB7uOwwmRvd14/AKrQPJ3NZXBf/LcZUbvJam');
+-- admin:feedme
+INSERT INTO users (name, email, password_hash) VALUES ('admin', 'admin@feed.me', '$argon2id$v=19$m=4096,t=3,p=1$WjduZmx4eDcxQXpGUzZQaw$s6Mu0KljDfs6LLOIXP+wVk6XX/8pcdYgiwTe1l0DKos');
