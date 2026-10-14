@@ -15,6 +15,7 @@ use crate::model::{
     entry,
     feed::{self, Feed, InsertFeedData},
 };
+use crate::utils::{db_error, not_found_or_db_error};
 
 #[get("/{name}")]
 pub async fn serve_feed(pool: web::Data<PgPool>, name: web::Path<String>) -> HttpResponse {
@@ -22,12 +23,12 @@ pub async fn serve_feed(pool: web::Data<PgPool>, name: web::Path<String>) -> Htt
         Ok(feed) => feed,
         Err(err) => {
             if let sqlx::Error::RowNotFound = err {
-                log::trace!(target: &format!("{}::app", crate::APP_NAME), "Error! Feed not found: {}.", &name);
+                crate::app_trace!("Error! Feed not found: {}.", &name);
                 return HttpResponse::NotFound()
                     .content_type(ContentType::plaintext())
                     .body("feed not found");
             } else {
-                log::warn!(target: &format!("{}::app", crate::APP_NAME), "Database error: {:?}", err);
+                crate::app_warn!("Database error: {:?}", err);
                 return HttpResponse::InternalServerError()
                     .content_type(ContentType::plaintext())
                     .body("error in request");
@@ -35,7 +36,7 @@ pub async fn serve_feed(pool: web::Data<PgPool>, name: web::Path<String>) -> Htt
         }
     };
 
-    log::trace!(target: &format!("{}::app", crate::APP_NAME), "Fetch feed: {}", &name);
+    crate::app_trace!("Fetch feed: {}", &name);
 
     let feed_name = name.clone();
 
@@ -53,7 +54,7 @@ pub async fn serve_feed(pool: web::Data<PgPool>, name: web::Path<String>) -> Htt
             let item = match item {
                 Ok(i) => i,
                 Err(e) => {
-                    log::warn!(target: &format!("{}::app", crate::APP_NAME), "Error fetching feed {}. Database error: {:?}", feed_name, e);
+                    crate::app_warn!("Error fetching feed {}. Database error: {:?}", feed_name, e);
                     yield Err(error::ErrorInternalServerError("database error"));
                     return;
                 },
@@ -66,7 +67,7 @@ pub async fn serve_feed(pool: web::Data<PgPool>, name: web::Path<String>) -> Htt
         if must_recalculate {
             feed.digest = md5_ctx.finalize().to_vec();
             if let Err(e) = feed.update_digest(&inner_pool).await {
-                log::warn!(target: &format!("{}::app", crate::APP_NAME), "Error updating digest for feed {}: {:?}", &name, e);
+                crate::app_warn!("Error updating digest for feed {}: {:?}", &name, e);
             }
         }
     };
@@ -94,26 +95,16 @@ async fn list_feeds(
 ) -> Result<Json<Vec<Feed>>> {
     let feeds = feed::Feed::list(&**pool, window.into_inner())
         .await
-        .map_err(|err| {
-            log::warn!(target: &format!("{}::app", crate::APP_NAME), "Database error: {:?}", err);
-            error::ErrorBadRequest("error in request")
-        })?;
+        .map_err(|err| db_error("feeds", 0, err))?;
     println!("Got {} feeds", feeds.len());
     Ok(web::Json(feeds))
 }
 
 #[get("/{id}")]
 async fn get_feed(pool: web::Data<PgPool>, id: web::Path<i64>) -> Result<Json<Feed>> {
-    let feed = feed::Feed::get_by_id(&**pool, *id).await.map_err(|err| {
-        // TODO: logging
-        if let sqlx::Error::RowNotFound = err {
-            log::trace!(target: &format!("{}::app", crate::APP_NAME), "Error! Feed not found: {}.", id);
-            error::ErrorNotFound("feed not found")
-        } else {
-            log::warn!(target: &format!("{}::app", crate::APP_NAME), "Database error: {:?}", err);
-            error::ErrorBadRequest("error in request")
-        }
-    })?;
+    let feed = feed::Feed::get_by_id(&**pool, *id)
+        .await
+        .map_err(|err| not_found_or_db_error("feed", *id, err))?;
     Ok(web::Json(feed))
 }
 
@@ -124,10 +115,7 @@ async fn create_feed(
 ) -> Result<Json<Feed>> {
     let feed = feed::Feed::insert(&**pool, info.into_inner())
         .await
-        .map_err(|err| {
-            log::warn!(target: &format!("{}::app", crate::APP_NAME), "Database error: {:?}", err);
-            error::ErrorBadRequest("error in request")
-        })?;
+        .map_err(|err| db_error("new feed", 0, err))?;
     Ok(web::Json(feed))
 }
 
@@ -156,7 +144,7 @@ where
         .map(|value| match value {
             Ok(val) => Ok(format!("{val}\n").into()),
             Err(e) => {
-                log::warn!("Database error: {e}");
+                crate::app_warn!("Database error: {e}");
                 Err(error::ErrorInternalServerError("database error"))
             }
         })

@@ -42,15 +42,15 @@
             throw new ApiError(0, "network error — is the server running?");
         }
 
-        if (res.status === 401) {
-            global.dispatchEvent(new CustomEvent("unauthorized"));
-            throw new ApiError(401, "session expired");
-        }
-
         const text = await res.text();
         let data = null;
         if (text) {
             try { data = JSON.parse(text); } catch { data = text; }
+        }
+
+        if (res.status === 401) {
+            global.dispatchEvent(new CustomEvent("unauthorized"));
+            throw new ApiError(401, data || "session expired");
         }
 
         if (!res.ok) {
@@ -86,10 +86,10 @@
             remove: (id) => request("DELETE", `/feed/${id}`),                   // (WIP)
         },
 
-        // feed entries (WIP) — nested under a feed
+        // feed entries — nested under a feed
         entries: {
-            list: (feedId, params) => request("GET", `/feed/${feedId}/entries${qs(params)}`),
-            create: (feedId, data) => request("POST", `/feed/${feedId}/entries`, data),
+            list: (feedId, params) => request("GET", `/feed/${feedId}/entries/${qs(params)}`),
+            create: (feedId, data) => request("POST", `/feed/${feedId}/entries/`, data),
             update: (feedId, id, data) => request("PUT", `/feed/${feedId}/entries/${id}`, data),
             remove: (feedId, id) => request("DELETE", `/feed/${feedId}/entries/${id}`),
         },

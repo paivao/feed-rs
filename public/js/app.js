@@ -97,7 +97,6 @@ document.addEventListener("alpine:init", () => {
 
         errText(e) {
             if (e instanceof api.ApiError) {
-                if (e.status === 404) return "Not available yet (backend endpoint missing).";
                 if (e.body && typeof e.body === "object") {
                     return e.body.message || e.body.error || JSON.stringify(e.body);
                 }

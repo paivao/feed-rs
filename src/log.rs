@@ -2,12 +2,56 @@ use std::{env, fs::OpenOptions, str::FromStr as _};
 
 #[cfg(unix)]
 use actix_web::rt::signal::unix::{SignalKind, signal};
+use const_format::formatcp;
 use reopen::{Handle, Reopen};
 use simplelog::{
     CombinedLogger, ConfigBuilder, LevelFilter, SharedLogger, TermLogger, WriteLogger,
 };
 
 const LOG_SINKS: [&str; 2] = ["app", "access"];
+
+/// Log target for application logs (`feed-rs::app`), computed once at compile time.
+pub const APP_TARGET: &str = formatcp!("{}::app", crate::APP_NAME);
+
+/// `log::error!` with the `app` target already filled in.
+#[macro_export]
+macro_rules! app_error {
+    ($($arg:tt)+) => {
+        log::error!(target: $crate::log::APP_TARGET, $($arg)+)
+    };
+}
+
+/// `log::warn!` with the `app` target already filled in.
+#[macro_export]
+macro_rules! app_warn {
+    ($($arg:tt)+) => {
+        log::warn!(target: $crate::log::APP_TARGET, $($arg)+)
+    };
+}
+
+/// `log::info!` with the `app` target already filled in.
+#[macro_export]
+macro_rules! app_info {
+    ($($arg:tt)+) => {
+        log::info!(target: $crate::log::APP_TARGET, $($arg)+)
+    };
+}
+
+/// `log::debug!` with the `app` target already filled in.
+#[macro_export]
+macro_rules! app_debug {
+    ($($arg:tt)+) => {
+        log::debug!(target: $crate::log::APP_TARGET, $($arg)+)
+    };
+}
+
+/// `log::trace!` with the `app` target already filled in.
+#[macro_export]
+macro_rules! app_trace {
+    ($($arg:tt)+) => {
+        log::trace!(target: $crate::log::APP_TARGET, $($arg)+)
+    };
+}
 
 pub fn logging_bootstrap(app_name: &str) {
     let mut sinks = Vec::<Box<dyn SharedLogger>>::with_capacity(LOG_SINKS.len());

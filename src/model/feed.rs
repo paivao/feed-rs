@@ -7,8 +7,8 @@ pub struct Feed {
     pub name: String,
     #[sqlx(default)]
     pub description: String,
-    #[sqlx(rename = "type")]
     pub feed_type: FeedType,
+    #[sqlx(default)]
     pub digest: Vec<u8>,
 }
 
@@ -35,12 +35,16 @@ pub enum FeedType {
 }
 
 impl Feed {
-    const INSERT_QUERY: &'static str = r#"INSERT INTO feeds (value, description, feed_type) VALUES ($1, $2, $3, $4) RETURNING id;"#;
-    const GET_QUERY: &'static str = r#"SELECT id, name, description, digest, type as "feed_type: FeedType" FROM feeds WHERE name = $1"#;
-    const GET_ID_QUERY: &'static str = r#"SELECT id, name, description, digest, type as "feed_type: FeedType" FROM feeds WHERE id = $1"#;
+    const INSERT_QUERY: &'static str =
+        r#"INSERT INTO feeds (name, description, feed_type) VALUES ($1, $2, $3) RETURNING id;"#;
+    const GET_QUERY: &'static str =
+        r#"SELECT id, name, description, digest, feed_type FROM feeds WHERE name = $1"#;
+    const GET_ID_QUERY: &'static str =
+        r#"SELECT id, name, description, digest, feed_type FROM feeds WHERE id = $1"#;
     const LIST_QUERY: &'static str =
-        r#"SELECT id, name, description, digest, type as "feed_type: FeedType" FROM feeds"#;
-    const LIST_SOME_QUERY: &'static str = r#"SELECT id, name, description, digest, type as "feed_type: FeedType" FROM feeds LIMIT $1 OFFSET $2"#;
+        r#"SELECT id, name, description, digest, feed_type FROM feeds"#;
+    const LIST_SOME_QUERY: &'static str =
+        r#"SELECT id, name, description, digest, feed_type FROM feeds LIMIT $1 OFFSET $2"#;
     const UPDATE_DIGEST_QUERY: &'static str = r#"UPDATE feeds SET digest = $1 WHERE id = $2"#;
     const DEFAULT_LIMIT: i32 = 100;
 

@@ -1,13 +1,15 @@
+use actix_web::http::StatusCode;
 use actix_web::{
-    HttpRequest, HttpResponse, Result, delete, error, get, post, put,
+    HttpRequest, HttpResponse, Result, delete, get, post, put,
     web::{self, Json},
 };
 use serde::Deserialize;
 use sqlx::PgPool;
 
 use crate::auth::{self, SessionStore};
-use crate::error::ApiError;
+use crate::error::{ApiError, json_error};
 use crate::model::user::User;
+use crate::utils::{db_error, not_found_or_db_error};
 
 /// Unauthenticated: session-issuing login and its counterpart logout.
 pub fn configure_auth_api(cfg: &mut web::ServiceConfig) {
@@ -45,15 +47,13 @@ async fn login(
     info: web::Json<LoginData>,
 ) -> Result<HttpResponse> {
     let info = info.into_inner();
-    let user = User::verify_credentials(&pool, &info.username, &info.password)
-        .await
-        .map_err(|e| {
-            println!("Failed to verify credentials: {}", e);
-            error::ErrorUnauthorized("invalid credentials")
-        })?;
-
-    let cookie = auth::issue_session_cookie(&sessions, user.clone());
-    Ok(HttpResponse::Ok().cookie(cookie).json(user))
+    match User::verify_credentials(&pool, &info.username, &info.password).await {
+        None => Err(json_error(StatusCode::UNAUTHORIZED, "invalid credentials")),
+        Some(user) => {
+            let cookie = auth::issue_session_cookie(&sessions, user.clone());
+            Ok(HttpResponse::Ok().cookie(cookie).json(user))
+        }
+    }
 }
 
 #[post("/logout")]
@@ -92,7 +92,7 @@ async fn list_users(
     let query = query.into_inner();
     let users = User::list_all(&pool, query.limit.unwrap_or(50), query.offset.unwrap_or(0))
         .await
-        .map_err(db_error)?;
+        .map_err(|err| db_error("users", 0, err))?;
     Ok(Json(users))
 }
 
@@ -100,8 +100,7 @@ async fn list_users(
 async fn get_user(pool: web::Data<PgPool>, id: web::Path<i64>) -> Result<Json<User>> {
     let user = User::get_by_id(&pool, *id)
         .await
-        .map_err(db_error)?
-        .ok_or_else(|| error::ErrorNotFound("user not found"))?;
+        .map_err(|err| not_found_or_db_error("user", *id, err))?;
     Ok(Json(user))
 }
 
@@ -113,7 +112,7 @@ async fn create_user(
     let info = info.into_inner();
     let user = User::create(&pool, &info.name, &info.email, &info.password)
         .await
-        .map_err(api_error)?;
+        .map_err(|err| api_error("new user", 0, err))?;
     Ok(Json(user))
 }
 
@@ -126,32 +125,37 @@ async fn update_user(
     let info = info.into_inner();
     let mut user = User::get_by_id(&pool, *id)
         .await
-        .map_err(db_error)?
-        .ok_or_else(|| error::ErrorNotFound("user not found"))?;
+        .map_err(|err| not_found_or_db_error("user", *id, err))?;
     user.name = info.name;
     user.email = info.email;
-    user.update(&pool).await.map_err(api_error)?;
+    user.update(&pool)
+        .await
+        .map_err(|err| not_found_or_db_error("user", *id, err))?;
     Ok(Json(user))
 }
 
 #[delete("/{id}")]
 async fn delete_user(pool: web::Data<PgPool>, id: web::Path<i64>) -> Result<HttpResponse> {
-    let deleted = User::delete(&pool, *id).await.map_err(db_error)?;
+    let deleted = User::delete(&pool, *id)
+        .await
+        .map_err(|err| db_error("user", *id, err))?;
     if deleted {
         Ok(HttpResponse::NoContent().finish())
     } else {
-        Err(error::ErrorNotFound("user not found"))
+        Err(json_error(StatusCode::NOT_FOUND, "user not found"))
     }
 }
 
 // PRIVATE FUNCTIONS
 
-fn db_error(err: sqlx::Error) -> actix_web::Error {
-    log::warn!(target: &format!("{}::app", crate::APP_NAME), "Database error: {:?}", err);
-    error::ErrorBadRequest("error in request")
-}
-
-fn api_error(err: ApiError) -> actix_web::Error {
-    log::warn!(target: &format!("{}::app", crate::APP_NAME), "Error: {:?}", err);
-    error::ErrorBadRequest("error in request")
+fn api_error(entity: &'static str, id: i64, err: ApiError) -> actix_web::Error {
+    match err {
+        ApiError::DB(e) => db_error(entity, id, e),
+        ApiError::InvalidPassword => json_error(StatusCode::UNAUTHORIZED, "invalid credentials"),
+        ApiError::NotFound => json_error(StatusCode::NOT_FOUND, format!("{entity} not found")),
+        other => {
+            crate::app_warn!("Error on {} {}: {:?}", entity, id, other);
+            json_error(StatusCode::BAD_REQUEST, "error in request")
+        }
+    }
 }

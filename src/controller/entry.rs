@@ -1,12 +1,15 @@
+use actix_web::http::StatusCode;
 use actix_web::{
-    HttpResponse, Result, delete, error, get, post, put,
+    HttpResponse, Result, delete, get, post, put,
     web::{self, Json},
 };
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use sqlx::types::chrono::{DateTime, Utc};
 
+use crate::error::json_error;
 use crate::model::{entry, feed};
+use crate::utils::{db_error, not_found_or_db_error};
 
 pub fn configure_entry_api(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -80,7 +83,7 @@ async fn list_entries(
                 .map(|v| v.into_iter().map(EntryResponse::URL).collect())
         }
     }
-    .map_err(db_error)?;
+    .map_err(|err| db_error("entries of feed", feed.id, err))?;
 
     Ok(Json(entries))
 }
@@ -104,7 +107,7 @@ async fn get_entry(
             .await
             .map(EntryResponse::URL),
     }
-    .map_err(not_found_or_db_error)?;
+    .map_err(|err| not_found_or_db_error("entry", id, err))?;
 
     Ok(Json(entry))
 }
@@ -123,7 +126,7 @@ async fn create_entry(
             let value = info
                 .value
                 .parse()
-                .map_err(|_| error::ErrorBadRequest("invalid IP/CIDR value"))?;
+                .map_err(|_| json_error(StatusCode::BAD_REQUEST, "invalid IP/CIDR value"))?;
             entry::IPEntry::insert(&pool, &feed, value, info.description, info.valid_until)
                 .await
                 .map(EntryResponse::IP)
@@ -139,7 +142,7 @@ async fn create_entry(
                 .map(EntryResponse::URL)
         }
     }
-    .map_err(db_error)?;
+    .map_err(|err| db_error("new entry in feed", feed.id, err))?;
 
     Ok(Json(entry))
 }
@@ -186,7 +189,7 @@ async fn update_entry(
         .await
         .map(EntryResponse::URL),
     }
-    .map_err(not_found_or_db_error)?;
+    .map_err(|err| not_found_or_db_error("entry", id, err))?;
 
     Ok(Json(entry))
 }
@@ -204,12 +207,12 @@ async fn delete_entry(
         feed::FeedType::Domain => entry::DomainEntry::delete(&pool, &feed, id).await,
         feed::FeedType::URL => entry::URLEntry::delete(&pool, &feed, id).await,
     }
-    .map_err(db_error)?;
+    .map_err(|err| db_error("entry", id, err))?;
 
     if deleted {
         Ok(HttpResponse::NoContent().finish())
     } else {
-        Err(error::ErrorNotFound("entry not found"))
+        Err(json_error(StatusCode::NOT_FOUND, "entry not found"))
     }
 }
 
@@ -218,18 +221,5 @@ async fn delete_entry(
 async fn get_feed_or_404(pool: &PgPool, feed_id: i64) -> Result<feed::Feed> {
     feed::Feed::get_by_id(pool, feed_id)
         .await
-        .map_err(not_found_or_db_error)
-}
-
-fn not_found_or_db_error(err: sqlx::Error) -> actix_web::Error {
-    if let sqlx::Error::RowNotFound = err {
-        error::ErrorNotFound("not found")
-    } else {
-        db_error(err)
-    }
-}
-
-fn db_error(err: sqlx::Error) -> actix_web::Error {
-    log::warn!(target: &format!("{}::app", crate::APP_NAME), "Database error: {:?}", err);
-    error::ErrorBadRequest("error in request")
+        .map_err(|err| not_found_or_db_error("feed", feed_id, err))
 }

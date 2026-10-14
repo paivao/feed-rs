@@ -51,53 +51,54 @@ impl User {
     }
 
     /// Get a user by ID
-    pub async fn get_by_id(pool: &PgPool, id: i64) -> Result<Option<Self>, sqlx::Error> {
+    pub async fn get_by_id(pool: &PgPool, id: i64) -> sqlx::Result<Self> {
         let row = sqlx::query(Self::GET_BY_ID_QUERY)
             .bind(id)
-            .fetch_optional(pool)
+            .fetch_one(pool)
             .await?;
 
-        Ok(row.map(|r| User {
-            id: r.get("id"),
-            name: r.get("name"),
-            email: r.get("email"),
+        Ok(User {
+            id: row.get("id"),
+            name: row.get("name"),
+            email: row.get("email"),
             groups: Vec::new(),
-        }))
+        })
     }
 
     /// Get a user by email
-    pub async fn get_by_email(pool: &PgPool, email: &str) -> Result<Option<Self>, sqlx::Error> {
+    pub async fn get_by_email(pool: &PgPool, email: &str) -> sqlx::Result<Self> {
         let row = sqlx::query(Self::GET_BY_EMAIL_QUERY)
             .bind(email)
-            .fetch_optional(pool)
+            .fetch_one(pool)
             .await?;
 
-        Ok(row.map(|r| User {
-            id: r.get("id"),
-            name: r.get("name"),
-            email: r.get("email"),
+        Ok(User {
+            id: row.get("id"),
+            name: row.get("name"),
+            email: row.get("email"),
+            // TODO: implement group fetching
             groups: Vec::new(),
-        }))
+        })
     }
 
     /// Get a user by username
-    pub async fn get_by_name(pool: &PgPool, name: &str) -> Result<Self, ApiError> {
+    pub async fn get_by_name(pool: &PgPool, name: &str) -> sqlx::Result<Self> {
         let row = sqlx::query(Self::GET_BY_NAME_QUERY)
             .bind(name)
-            .fetch_optional(pool)
+            .fetch_one(pool)
             .await?;
 
-        row.map(|r| User {
-            id: r.get("id"),
-            name: r.get("name"),
-            email: r.get("email"),
+        Ok(User {
+            id: row.get("id"),
+            name: row.get("name"),
+            email: row.get("email"),
+            // TODO: implement group fetching
             groups: Vec::new(),
         })
-        .ok_or(ApiError::NotFound)
     }
 
     /// Update user information
-    pub async fn update(&self, pool: &PgPool) -> Result<(), ApiError> {
+    pub async fn update(&self, pool: &PgPool) -> sqlx::Result<()> {
         let row = sqlx::query(Self::UPDATE_QUERY)
             .bind(&self.name)
             .bind(&self.email)
@@ -106,7 +107,7 @@ impl User {
             .await?;
 
         return if row.rows_affected() != 1 {
-            Err(ApiError::DB(sqlx::Error::RowNotFound))
+            Err(sqlx::Error::RowNotFound)
         } else {
             Ok(())
         };
@@ -124,37 +125,40 @@ impl User {
 
     /// Verify user credentials (login check)
     /// Returns Some(User) if credentials are valid, None otherwise
-    pub async fn verify_credentials(
-        pool: &PgPool,
-        username: &str,
-        password: &str,
-    ) -> Result<Self, ApiError> {
+    pub async fn verify_credentials(pool: &PgPool, username: &str, password: &str) -> Option<Self> {
         // Try to find user by email or name
         let user = sqlx::query("SELECT id, name, email, password_hash FROM users WHERE name = $1")
             .bind(username)
             .fetch_one(pool)
-            .await?;
+            .await;
 
-        let stored_hash: String = user.get("password_hash");
+        let stored_hash: String = if let Ok(_user) = &user {
+            _user.get("password_hash")
+        } else {
+            String::new()
+        };
 
-        if !verify_password(&stored_hash, password) {
-            return Err(ApiError::InvalidPassword);
+        // Runs it even when user is None (anti-timing attack)
+        if verify_password(&stored_hash, password) {
+            match user {
+                Ok(user) => Some(User {
+                    id: user.get("id"),
+                    name: user.get("name"),
+                    email: user.get("email"),
+                    groups: Vec::new(),
+                }),
+                Err(e) => {
+                    crate::app_debug!("Verify credentials: database error: {}", e);
+                    None
+                }
+            }
+        } else {
+            None
         }
-
-        return Ok(User {
-            id: user.get("id"),
-            name: user.get("name"),
-            email: user.get("email"),
-            groups: Vec::new(),
-        });
     }
 
     /// List all users (with optional pagination)
-    pub async fn list_all(
-        pool: &PgPool,
-        limit: i64,
-        offset: i64,
-    ) -> Result<Vec<Self>, sqlx::Error> {
+    pub async fn list_all(pool: &PgPool, limit: i64, offset: i64) -> sqlx::Result<Vec<Self>> {
         let rows = sqlx::query(
             "SELECT id, name, email, password_hash FROM users ORDER BY id LIMIT $1 OFFSET $2",
         )

@@ -4,9 +4,8 @@ CREATE TABLE feeds (
     id BIGSERIAL NOT NULL PRIMARY KEY,
     name VARCHAR(128) NOT NULL UNIQUE,
     description VARCHAR(255),
-    is_public BOOLEAN NOT NULL,
-    digest VARCHAR(255),
-    type FeedType NOT NULL
+    digest BYTEA NOT NULL DEFAULT ''::bytea,
+    feed_type FeedType NOT NULL
 );
 
 CREATE TABLE ip_entries (
