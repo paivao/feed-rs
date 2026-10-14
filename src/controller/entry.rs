@@ -13,7 +13,7 @@ use crate::utils::{db_error, not_found_or_db_error};
 
 pub fn configure_entry_api(cfg: &mut web::ServiceConfig) {
     cfg.service(
-        web::scope("/feed/{feed_id}/entries")
+        web::scope("/entries/{feed_id}")
             .service(list_entries)
             .service(get_entry)
             .service(create_entry)

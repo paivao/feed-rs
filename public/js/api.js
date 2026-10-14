@@ -88,10 +88,10 @@
 
         // feed entries — nested under a feed
         entries: {
-            list: (feedId, params) => request("GET", `/feed/${feedId}/entries/${qs(params)}`),
-            create: (feedId, data) => request("POST", `/feed/${feedId}/entries/`, data),
-            update: (feedId, id, data) => request("PUT", `/feed/${feedId}/entries/${id}`, data),
-            remove: (feedId, id) => request("DELETE", `/feed/${feedId}/entries/${id}`),
+            list: (feedId, params) => request("GET", `/entries/${feedId}/${qs(params)}`),
+            create: (feedId, data) => request("POST", `/entries/${feedId}/`, data),
+            update: (feedId, id, data) => request("PUT", `/entries/${feedId}/${id}`, data),
+            remove: (feedId, id) => request("DELETE", `/entries/${feedId}/${id}`),
         },
 
         // users (WIP)
