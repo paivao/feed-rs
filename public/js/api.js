@@ -79,7 +79,7 @@
 
         // feeds
         feeds: {
-            list: () => request("GET", "/feed/"),
+            list: (params) => request("GET", `/feed/${qs(params)}`),
             get: (id) => request("GET", `/feed/${id}`),
             create: (data) => request("POST", "/feed/", data),
             update: (id, data) => request("PUT", `/feed/${id}`, data),          // (WIP)
@@ -94,12 +94,12 @@
             remove: (feedId, id) => request("DELETE", `/entries/${feedId}/${id}`),
         },
 
-        // users (WIP)
+        // users
         users: {
-            list: () => request("GET", "/users/"),
-            create: (data) => request("POST", "/users/", data),
-            update: (id, data) => request("PUT", `/users/${id}`, data),
-            remove: (id) => request("DELETE", `/users/${id}`),
+            list: (params) => request("GET", `/user/${qs(params)}`),
+            create: (data) => request("POST", "/user/", data),
+            update: (id, data) => request("PUT", `/user/${id}`, data),
+            remove: (id) => request("DELETE", `/user/${id}`),
         },
     };
 })(window);

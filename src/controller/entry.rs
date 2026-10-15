@@ -49,6 +49,7 @@ struct ListQuery {
     quantity: Option<i64>,
     last_id: Option<i64>,
     enabled: Option<bool>,
+    search: Option<String>,
 }
 
 #[get("/")]
@@ -60,10 +61,11 @@ async fn list_entries(
     let feed = get_feed_or_404(&pool, *feed_id).await?;
     let query = query.into_inner();
     let quantity = query.quantity.unwrap_or(100);
+    let search = query.search.as_deref();
 
     let entries = match feed.feed_type {
         feed::FeedType::IP => {
-            entry::IPEntry::fetch_some(&pool, &feed, quantity, query.last_id, query.enabled, None)
+            entry::IPEntry::fetch_some(&pool, &feed, quantity, query.last_id, query.enabled, None, search)
                 .await
                 .map(|v| v.into_iter().map(EntryResponse::IP).collect())
         }
@@ -74,11 +76,12 @@ async fn list_entries(
             query.last_id,
             query.enabled,
             None,
+            search,
         )
         .await
         .map(|v| v.into_iter().map(EntryResponse::Domain).collect()),
         feed::FeedType::URL => {
-            entry::URLEntry::fetch_some(&pool, &feed, quantity, query.last_id, query.enabled, None)
+            entry::URLEntry::fetch_some(&pool, &feed, quantity, query.last_id, query.enabled, None, search)
                 .await
                 .map(|v| v.into_iter().map(EntryResponse::URL).collect())
         }
@@ -132,11 +135,17 @@ async fn create_entry(
                 .map(EntryResponse::IP)
         }
         feed::FeedType::Domain => {
+            entry::validate_domain(&info.value).map_err(|reason| {
+                json_error(StatusCode::BAD_REQUEST, format!("invalid domain: {reason}"))
+            })?;
             entry::DomainEntry::insert(&pool, &feed, info.value, info.description, info.valid_until)
                 .await
                 .map(EntryResponse::Domain)
         }
         feed::FeedType::URL => {
+            entry::validate_url(&info.value).map_err(|reason| {
+                json_error(StatusCode::BAD_REQUEST, format!("invalid URL: {reason}"))
+            })?;
             entry::URLEntry::insert(&pool, &feed, info.value, info.description, info.valid_until)
                 .await
                 .map(EntryResponse::URL)

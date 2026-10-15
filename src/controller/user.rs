@@ -82,6 +82,7 @@ struct UpdateUserData {
 struct ListQuery {
     limit: Option<i64>,
     offset: Option<i64>,
+    search: Option<String>,
 }
 
 #[get("/")]
@@ -90,9 +91,14 @@ async fn list_users(
     query: web::Query<ListQuery>,
 ) -> Result<Json<Vec<User>>> {
     let query = query.into_inner();
-    let users = User::list_all(&pool, query.limit.unwrap_or(50), query.offset.unwrap_or(0))
-        .await
-        .map_err(|err| db_error("users", 0, err))?;
+    let users = User::list_all(
+        &pool,
+        query.limit.unwrap_or(50),
+        query.offset.unwrap_or(0),
+        query.search.as_deref(),
+    )
+    .await
+    .map_err(|err| db_error("users", 0, err))?;
     Ok(Json(users))
 }
 

@@ -45,7 +45,7 @@ pub async fn run(pool: web::Data<PgPool>) -> std::io::Result<()> {
             // Feed list service - HTTP Basic auth, for appliances polling feeds
             .service(
                 web::scope("/feed")
-                    .wrap(HttpAuthentication::basic(auth::basic_validator))
+                    //.wrap(HttpAuthentication::basic(auth::basic_validator))
                     .service(controller::feed::serve_feed),
             )
             // Actix doesn't fall through between sibling scopes with the same prefix,

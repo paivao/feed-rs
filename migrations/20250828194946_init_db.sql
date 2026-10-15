@@ -10,7 +10,7 @@ CREATE TABLE feeds (
 
 CREATE TABLE ip_entries (
     id BIGSERIAL NOT NULL PRIMARY KEY,
-    value BYTEA NOT NULL,
+    value INET NOT NULL,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
     description VARCHAR(255),
     valid_until TIMESTAMP,

@@ -66,6 +66,8 @@
         <section x-show="route.name === 'feeds'">
             <div class="page-head">
                 <h2>Feeds</h2>
+                <input type="search" class="search-input" placeholder="Search by name…"
+                       x-model="feedSearch" @input.debounce.400ms="loadFeeds()">
                 <button @click="openFeedForm('create')">New feed</button>
             </div>
 
@@ -127,6 +129,8 @@
                 <div class="page-head">
                     <h3>Entries</h3>
                     <div class="entry-tools">
+                        <input type="search" class="search-input" placeholder="Search value or description…"
+                               x-model="entrySearch" @input.debounce.400ms="loadEntries()">
                         <select x-model="entryFilter" @change="loadEntries()">
                             <option value="all">All</option>
                             <option value="enabled">Enabled only</option>
@@ -177,6 +181,8 @@
         <section x-show="route.name === 'users'">
             <div class="page-head">
                 <h2>Users</h2>
+                <input type="search" class="search-input" placeholder="Search by name or email…"
+                       x-model="userSearch" @input.debounce.400ms="loadUsers()">
                 <button @click="openUserForm('create')">New user</button>
             </div>
 

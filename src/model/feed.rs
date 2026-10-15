@@ -43,8 +43,6 @@ impl Feed {
         r#"SELECT id, name, description, digest, feed_type FROM feeds WHERE id = $1"#;
     const LIST_QUERY: &'static str =
         r#"SELECT id, name, description, digest, feed_type FROM feeds"#;
-    const LIST_SOME_QUERY: &'static str =
-        r#"SELECT id, name, description, digest, feed_type FROM feeds LIMIT $1 OFFSET $2"#;
     const UPDATE_DIGEST_QUERY: &'static str = r#"UPDATE feeds SET digest = $1 WHERE id = $2"#;
     const DEFAULT_LIMIT: i32 = 100;
 
@@ -65,14 +63,20 @@ impl Feed {
         })
     }
 
-    pub async fn list(conn: &PgPool, window: super::Window) -> Result<Vec<Self>, Error> {
-        let size = window.size.unwrap_or(Self::DEFAULT_LIMIT);
-        let window = window.pos.unwrap_or(0);
-        sqlx::query_as(Self::LIST_SOME_QUERY)
-            .bind(size)
-            .bind(window * size)
-            .fetch_all(conn)
-            .await
+    pub async fn list(conn: &PgPool, query: super::QueryFilter) -> Result<Vec<Self>, Error> {
+        let size = query.size.unwrap_or(Self::DEFAULT_LIMIT);
+        let offset = query.pos.unwrap_or(0) * size;
+        let search = query.search.as_deref();
+
+        let mut builder = sqlx::QueryBuilder::new(Self::LIST_QUERY);
+        if let Some(term) = search.filter(|s| !s.is_empty()) {
+            builder
+                .push(" WHERE name ILIKE ")
+                .push_bind(format!("%{term}%"));
+        }
+        builder.push(" LIMIT ").push_bind(size);
+        builder.push(" OFFSET ").push_bind(offset);
+        builder.build_query_as().fetch_all(conn).await
     }
 
     pub async fn get(conn: &PgPool, name: &str) -> Result<Self, Error> {

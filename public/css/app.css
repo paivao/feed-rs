@@ -71,6 +71,9 @@ code.digest { font-size: 0.8rem; }
 }
 .entry-tools select { margin-bottom: 0; width: auto; }
 
+/* ── search ──────────────────────────────────────────────── */
+.search-input { margin-bottom: 0; width: auto; max-width: 16rem; }
+
 /* ── login ───────────────────────────────────────────────── */
 .login-wrap {
     max-width: 26rem;

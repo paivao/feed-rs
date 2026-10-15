@@ -21,9 +21,9 @@ pub struct User {
 impl User {
     const INSERT_QUERY: &'static str = r#"INSERT INTO users (name, email, password_hash) VALUES ($1, $2, $3) RETURNING id, name, email"#;
     const GET_BY_ID_QUERY: &'static str = r#"SELECT id, name, email FROM users WHERE id = $1"#;
-    const GET_BY_EMAIL_QUERY: &'static str =
-        r#"SELECT id, name, email FROM users WHERE email = $1"#;
-    const GET_BY_NAME_QUERY: &'static str = r#"SELECT id, name, email FROM users WHERE name = $1"#;
+    const GET_BY_NAME_OR_EMAIL_QUERY: &'static str =
+        r#"SELECT id, name, email FROM users WHERE name = $1 OR email = $1"#;
+    //const GET_BY_NAME_QUERY: &'static str = r#"SELECT id, name, email FROM users WHERE name = $1"#;
     const UPDATE_QUERY: &'static str = r#"UPDATE users SET name = $1, email = $2 WHERE id = $3"#;
     /// Create a new user in the database
     pub async fn create(
@@ -66,8 +66,8 @@ impl User {
     }
 
     /// Get a user by email
-    pub async fn get_by_email(pool: &PgPool, email: &str) -> sqlx::Result<Self> {
-        let row = sqlx::query(Self::GET_BY_EMAIL_QUERY)
+    pub async fn get_by_name_or_email(pool: &PgPool, email: &str) -> sqlx::Result<Self> {
+        let row = sqlx::query(Self::GET_BY_NAME_OR_EMAIL_QUERY)
             .bind(email)
             .fetch_one(pool)
             .await?;
@@ -82,7 +82,7 @@ impl User {
     }
 
     /// Get a user by username
-    pub async fn get_by_name(pool: &PgPool, name: &str) -> sqlx::Result<Self> {
+    /*pub async fn get_by_name(pool: &PgPool, name: &str) -> sqlx::Result<Self> {
         let row = sqlx::query(Self::GET_BY_NAME_QUERY)
             .bind(name)
             .fetch_one(pool)
@@ -95,7 +95,7 @@ impl User {
             // TODO: implement group fetching
             groups: Vec::new(),
         })
-    }
+    }*/
 
     /// Update user information
     pub async fn update(&self, pool: &PgPool) -> sqlx::Result<()> {
@@ -157,15 +157,26 @@ impl User {
         }
     }
 
-    /// List all users (with optional pagination)
-    pub async fn list_all(pool: &PgPool, limit: i64, offset: i64) -> sqlx::Result<Vec<Self>> {
-        let rows = sqlx::query(
-            "SELECT id, name, email, password_hash FROM users ORDER BY id LIMIT $1 OFFSET $2",
-        )
-        .bind(limit)
-        .bind(offset)
-        .fetch_all(pool)
-        .await?;
+    /// List all users (with optional pagination and a name/email search term)
+    pub async fn list_all(
+        pool: &PgPool,
+        limit: i64,
+        offset: i64,
+        search: Option<&str>,
+    ) -> sqlx::Result<Vec<Self>> {
+        let mut builder =
+            sqlx::QueryBuilder::new("SELECT id, name, email, password_hash FROM users");
+        if let Some(term) = search.filter(|s| !s.is_empty()) {
+            let pattern = format!("%{term}%");
+            builder
+                .push(" WHERE name ILIKE ")
+                .push_bind(pattern.clone())
+                .push(" OR email ILIKE ")
+                .push_bind(pattern);
+        }
+        builder.push(" ORDER BY id LIMIT ").push_bind(limit);
+        builder.push(" OFFSET ").push_bind(offset);
+        let rows = builder.build().fetch_all(pool).await?;
 
         Ok(rows
             .into_iter()

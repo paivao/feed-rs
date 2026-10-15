@@ -8,6 +8,88 @@ use sqlx::{Error, FromRow, PgPool};
 
 use crate::model::feed::Feed;
 
+/// The full `"value\n"` line as it should be written to the feed body. Lets
+/// `fetch_values` stay generic across entry types while still letting `IpNetwork` drop
+/// a redundant `/32` or `/128` — and builds the line in one allocation, straight from
+/// the borrowed value, instead of cloning first and formatting after.
+trait FeedValue {
+    fn feed_line(&self) -> String;
+}
+
+impl FeedValue for String {
+    fn feed_line(&self) -> String {
+        format!("{self}\n")
+    }
+}
+
+impl FeedValue for IpNetwork {
+    fn feed_line(&self) -> String {
+        let host_prefix = if self.is_ipv4() { 32 } else { 128 };
+        if self.prefix() == host_prefix {
+            format!("{}\n", self.ip())
+        } else {
+            format!("{self}\n")
+        }
+    }
+}
+
+/// Matches `domain_entries.value VARCHAR(255)` (see migrations).
+const MAX_DOMAIN_LEN: usize = 255;
+/// Matches `url_entries.value VARCHAR(8192)` (see migrations).
+const MAX_URL_LEN: usize = 8192;
+
+/// A hostname syntax check (RFC 1035/1123-ish, not a full validator): dot-separated
+/// labels of 1-63 characters, letters/digits/hyphens only, no leading/trailing hyphen.
+pub fn validate_domain(value: &str) -> Result<(), &'static str> {
+    if value.is_empty() || value.len() > MAX_DOMAIN_LEN {
+        return Err("must be between 1 and 255 characters");
+    }
+    for label in value.split('.') {
+        if label.is_empty() || label.len() > 63 {
+            return Err("each label must be between 1 and 63 characters");
+        }
+        if !label.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-') {
+            return Err("must contain only letters, digits, hyphens and dots");
+        }
+        if label.starts_with('-') || label.ends_with('-') {
+            return Err("labels can't start or end with a hyphen");
+        }
+    }
+    Ok(())
+}
+
+/// A URL syntax check (not a full RFC 3986 parser): an optional `scheme://` prefix
+/// followed by a non-empty host, and no whitespace/control characters anywhere in the
+/// value. The scheme is optional since blocklist entries are often given as bare
+/// `host/path` (appliances matching on it don't care about the scheme).
+pub fn validate_url(value: &str) -> Result<(), &'static str> {
+    if value.is_empty() || value.len() > MAX_URL_LEN {
+        return Err("must be between 1 and 8192 characters");
+    }
+    if value.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return Err("must not contain whitespace or control characters");
+    }
+    let rest = match value.split_once("://") {
+        Some((scheme, rest)) => {
+            if scheme.is_empty()
+                || !scheme
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'+' | b'-' | b'.'))
+            {
+                return Err("has an invalid scheme");
+            }
+            rest
+        }
+        None => value,
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let host = authority.rsplit('@').next().unwrap_or(authority);
+    if host.is_empty() {
+        return Err("must include a host");
+    }
+    Ok(())
+}
+
 macro_rules! make_entry_type {
     ($name: ident, $field_type: ty, $table_name: literal) => {
         #[derive(Debug, Clone, FromRow, Serialize)]
@@ -42,7 +124,7 @@ macro_rules! make_entry_type {
 
             pub fn fetch_values<'q>(conn: &'q PgPool, feed: &Feed) -> BoxStream<'q, Result<Bytes, Error>>
             {
-                sqlx::query_scalar(Self::FETCH_QUERY).bind(feed.id).fetch(conn).map_ok(|value: $field_type| format!("{value}\n").into()).boxed()
+                sqlx::query_scalar(Self::FETCH_QUERY).bind(feed.id).fetch(conn).map_ok(|value: $field_type| value.feed_line().into()).boxed()
             }
 
             /// Fetch a single entry by id, scoped to the given feed.
@@ -50,7 +132,7 @@ macro_rules! make_entry_type {
                 sqlx::query_as(Self::GET_QUERY).bind(id).bind(feed.id).fetch_one(conn).await
             }
 
-            pub async fn fetch_some(conn: &PgPool, feed: &Feed, quantity: i64, last_id: Option<i64>, enabled: Option<bool>, valid_until: Option<Option<DateTime<Utc>>>) -> Result<Vec<Self>, Error> {
+            pub async fn fetch_some(conn: &PgPool, feed: &Feed, quantity: i64, last_id: Option<i64>, enabled: Option<bool>, valid_until: Option<Option<DateTime<Utc>>>, search: Option<&str>) -> Result<Vec<Self>, Error> {
                 let mut builder = sqlx::QueryBuilder::new(Self::GET_SOME_QUERY);
                 builder.push_bind(feed.id);
                 if let Some(enabled_cond) = enabled {
@@ -62,6 +144,11 @@ macro_rules! make_entry_type {
                         Some(times) => builder.push(" >= ").push_bind(times),
                         None => builder.push(" IS NULL")
                     };
+                }
+                if let Some(term) = search.filter(|s| !s.is_empty()) {
+                    let pattern = format!("%{term}%");
+                    builder.push(" AND (value::text ILIKE ").push_bind(pattern.clone())
+                        .push(" OR description ILIKE ").push_bind(pattern).push(")");
                 }
                 builder.push(" AND id > ").push_bind(last_id.unwrap_or(0));
                 builder.push(" LIMIT ").push_bind(quantity);

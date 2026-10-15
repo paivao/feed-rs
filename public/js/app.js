@@ -21,6 +21,7 @@ document.addEventListener("alpine:init", () => {
         // feeds
         feeds: [],
         feedsLoading: false,
+        feedSearch: "",
         feedForm: { open: false, mode: "create", id: null, busy: false, data: {} },
 
         // feed detail
@@ -28,11 +29,13 @@ document.addEventListener("alpine:init", () => {
         entries: [],
         entriesLoading: false,
         entryFilter: "all",
+        entrySearch: "",
         entryForm: { open: false, mode: "create", id: null, busy: false, data: {} },
 
         // users
         users: [],
         usersLoading: false,
+        userSearch: "",
         userForm: { open: false, mode: "create", id: null, busy: false, data: {} },
 
         // ── lifecycle ───────────────────────────────────────
@@ -136,7 +139,7 @@ document.addEventListener("alpine:init", () => {
         async loadFeeds() {
             this.feedsLoading = true;
             try {
-                this.feeds = (await api.feeds.list()) || [];
+                this.feeds = (await api.feeds.list({ search: this.feedSearch })) || [];
             } catch (e) {
                 this.handle(e);
             } finally {
@@ -209,7 +212,7 @@ document.addEventListener("alpine:init", () => {
         async loadEntries() {
             if (!this.currentFeed) return;
             this.entriesLoading = true;
-            const params = {};
+            const params = { search: this.entrySearch };
             if (this.entryFilter === "enabled") params.enabled = "true";
             if (this.entryFilter === "disabled") params.enabled = "false";
             try {
@@ -300,7 +303,7 @@ document.addEventListener("alpine:init", () => {
         async loadUsers() {
             this.usersLoading = true;
             try {
-                this.users = (await api.users.list()) || [];
+                this.users = (await api.users.list({ search: this.userSearch })) || [];
             } catch (e) {
                 this.handle(e);
             } finally {

@@ -6,7 +6,8 @@ pub mod feed;
 pub mod user;
 
 #[derive(Deserialize)]
-pub(crate) struct Window {
+pub(crate) struct QueryFilter {
     pub(crate) pos: Option<i32>,
     pub(crate) size: Option<i32>,
+    pub(crate) search: Option<String>,
 }
